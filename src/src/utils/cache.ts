@@ -1,3 +1,15 @@
+export interface ICache {
+  get<T>(key: string): Promise<T | undefined>;
+  set<T>(key: string, value: T, ttl?: number): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  exists(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+  getStats(): CacheStats;
+  keys(): Promise<string[]>;
+  size(): Promise<number>;
+  destroy(): Promise<void>;
+}
+
 export interface CacheEntry<T> {
   value: T;
   expiresAt: number | null;
@@ -17,7 +29,7 @@ export interface CacheOptions {
   maxSize?: number;
 }
 
-export class Cache {
+export class Cache implements ICache {
   private store: Map<string, CacheEntry<unknown>>;
   private stats: { hits: number; misses: number };
   private defaultTTL: number | null;
@@ -40,25 +52,25 @@ export class Cache {
     }
   }
 
-  get<T>(key: string): T | undefined {
+  get<T>(key: string): Promise<T | undefined> {
     const entry = this.store.get(key);
 
     if (!entry) {
       this.stats.misses++;
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
       this.store.delete(key);
       this.stats.misses++;
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     this.stats.hits++;
-    return entry.value as T;
+    return Promise.resolve(entry.value as T);
   }
 
-  set<T>(key: string, value: T, ttl?: number): void {
+  set<T>(key: string, value: T, ttl?: number): Promise<void> {
     if (this.store.size >= this.maxSize && !this.store.has(key)) {
       const firstKey = this.store.keys().next().value;
       if (firstKey !== undefined) {
@@ -74,31 +86,34 @@ export class Cache {
       expiresAt,
       createdAt: Date.now(),
     });
+
+    return Promise.resolve();
   }
 
-  delete(key: string): boolean {
-    return this.store.delete(key);
+  delete(key: string): Promise<boolean> {
+    return Promise.resolve(this.store.delete(key));
   }
 
-  exists(key: string): boolean {
+  exists(key: string): Promise<boolean> {
     const entry = this.store.get(key);
 
     if (!entry) {
-      return false;
+      return Promise.resolve(false);
     }
 
     if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
       this.store.delete(key);
-      return false;
+      return Promise.resolve(false);
     }
 
-    return true;
+    return Promise.resolve(true);
   }
 
-  clear(): void {
+  clear(): Promise<void> {
     this.store.clear();
     this.stats.hits = 0;
     this.stats.misses = 0;
+    return Promise.resolve();
   }
 
   getStats(): CacheStats {
@@ -111,12 +126,12 @@ export class Cache {
     };
   }
 
-  keys(): string[] {
-    return Array.from(this.store.keys());
+  keys(): Promise<string[]> {
+    return Promise.resolve(Array.from(this.store.keys()));
   }
 
-  size(): number {
-    return this.store.size;
+  size(): Promise<number> {
+    return Promise.resolve(this.store.size);
   }
 
   private cleanup(): void {
@@ -128,12 +143,13 @@ export class Cache {
     }
   }
 
-  destroy(): void {
+  destroy(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
     this.store.clear();
+    return Promise.resolve();
   }
 }
 

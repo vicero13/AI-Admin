@@ -8,7 +8,7 @@ RUN npm ci --only=production
 
 # Скопировать код
 COPY src/ ./
-COPY config/ ./config/
+COPY src/config/ ./config/
 COPY knowledge-base/ ./knowledge-base/
 
 # Собрать TypeScript
