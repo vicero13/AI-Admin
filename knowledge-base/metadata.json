@@ -1,0 +1,80 @@
+{
+  "version": "2.1.0",
+  "created": "2025-01-15T00:00:00Z",
+  "lastUpdated": "2025-01-30T10:00:00Z",
+  "updatedBy": "admin",
+  "businessName": "КоВоркинг Пространство «Орбита»",
+
+  "statistics": {
+    "totalItems": 156,
+    "byType": {
+      "business_info": 1,
+      "services": 5,
+      "faq": 22,
+      "policies": 3,
+      "dialog_examples": 6,
+      "team_members": 3
+    },
+    "byCategory": {
+      "general": 10,
+      "pricing": 7,
+      "booking": 5,
+      "policies": 3,
+      "technical": 1,
+      "location": 1,
+      "services": 1
+    }
+  },
+
+  "files": [
+    "business-info.json",
+    "services.json",
+    "team.json",
+    "faq/general.json",
+    "faq/pricing.json",
+    "faq/booking.json",
+    "policies/cancellation.json",
+    "policies/refund.json",
+    "policies/rules.json",
+    "dialogs/examples.json",
+    "dialogs/successful/booking-success.json",
+    "dialogs/escalated/corporate-request.json",
+    "dialogs/problematic/technical-issue.json"
+  ],
+
+  "changelog": [
+    {
+      "version": "2.1.0",
+      "date": "2025-01-30",
+      "changes": [
+        "Добавлены FAQ по ценам (pricing.json)",
+        "Добавлены FAQ по бронированию (booking.json)",
+        "Добавлена политика возвратов (refund.json)",
+        "Добавлены правила пространства (rules.json)",
+        "Добавлен файл команды (team.json)",
+        "Созданы подкаталоги диалогов (successful, escalated, problematic)",
+        "Добавлены примеры диалогов в подкаталоги"
+      ],
+      "author": "admin"
+    },
+    {
+      "version": "2.0.0",
+      "date": "2025-01-15",
+      "changes": [
+        "Первоначальная структура базы знаний",
+        "Добавлена информация о бизнесе",
+        "Добавлены услуги и цены",
+        "Добавлены общие FAQ",
+        "Добавлена политика отмены",
+        "Добавлены примеры диалогов"
+      ],
+      "author": "admin"
+    }
+  ],
+
+  "integrity": {
+    "lastCheck": "2025-01-30T10:00:00Z",
+    "status": "valid",
+    "issues": []
+  }
+}
