@@ -129,5 +129,23 @@ handoff:
 
 knowledgeBasePath: "./knowledge-base"
 
+redis:
+  enabled: false
+  host: "localhost"
+  port: 6379
+  # password: ""
+  db: 0
+  keyPrefix: "ai-admin:"
+
+database:
+  type: "memory"   # "memory" или "postgres"
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "ai_admin"
+    user: "ai_admin"
+    password: "ai_admin"
+    maxConnections: 10
+
 logging:
   level: "info"

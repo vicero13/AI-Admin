@@ -16,6 +16,9 @@ import { SituationDetector } from './core/situation-detector';
 import { HumanMimicry } from './core/human-mimicry';
 import { HandoffSystem } from './core/handoff-system';
 import { Orchestrator, OrchestratorConfig } from './core/orchestrator';
+import { DataLayer, DataLayerConfig } from './data';
+import { createCache } from './utils/cache-factory';
+import { ICache } from './utils/cache';
 import {
   AIProvider,
   PlatformType,
@@ -132,7 +135,38 @@ async function main() {
     cacheTTL: config.ai?.cacheTTL || 1800,
   };
 
-  // 6. Инициализация компонентов
+  // 6. DataLayer (PostgreSQL / in-memory)
+  const dbType = (process.env.DATABASE_TYPE || config.database?.type || 'memory') as 'memory' | 'postgres';
+  const dataLayerConfig: DataLayerConfig = {
+    type: dbType,
+    postgres: dbType === 'postgres' ? {
+      host: process.env.POSTGRES_HOST || config.database?.postgres?.host || 'localhost',
+      port: Number(process.env.POSTGRES_PORT) || config.database?.postgres?.port || 5432,
+      database: process.env.POSTGRES_DB || config.database?.postgres?.database || 'ai_admin',
+      user: process.env.POSTGRES_USER || config.database?.postgres?.user || 'ai_admin',
+      password: process.env.POSTGRES_PASSWORD || config.database?.postgres?.password || 'ai_admin',
+      maxConnections: config.database?.postgres?.maxConnections || 10,
+    } : undefined,
+  };
+  const dataLayer = new DataLayer(dataLayerConfig);
+  await dataLayer.initialize();
+  console.log(`[Init] ✅ DataLayer (${dbType})`);
+
+  // 7. Cache (Redis / in-memory)
+  const redisEnabled = process.env.REDIS_ENABLED === 'true' || config.redis?.enabled === true;
+  const cacheInstance: ICache = createCache({
+    defaultTTL: (config.ai?.cacheTTL ?? 1800) * 1000,
+    cleanupInterval: 60_000,
+    redis: redisEnabled ? {
+      host: process.env.REDIS_HOST || config.redis?.host || 'localhost',
+      port: Number(process.env.REDIS_PORT) || config.redis?.port || 6379,
+      password: process.env.REDIS_PASSWORD || config.redis?.password,
+      db: config.redis?.db ?? 0,
+      keyPrefix: config.redis?.keyPrefix ?? 'ai-admin:',
+    } : undefined,
+  });
+
+  // 8. Инициализация компонентов
   console.log('[Init] Инициализация компонентов...');
 
   // Knowledge Base
@@ -320,6 +354,8 @@ async function main() {
     console.log('\n[Shutdown] Завершение работы...');
     await orchestrator.stop();
     await telegramAdapter.shutdown();
+    await cacheInstance.destroy();
+    await dataLayer.close();
     process.exit(0);
   };
 
