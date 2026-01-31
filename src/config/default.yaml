@@ -127,6 +127,14 @@ handoff:
   estimatedWaitTime: 120
   maxWaitBeforeEscalation: 300
 
+telegram:
+  # Webhook mode (для Telegram Business).
+  # Если webhook.url не задан — используется polling (по умолчанию).
+  webhook:
+    # url: "https://your-domain.com/webhook/telegram"
+    path: "/webhook/telegram"
+    # secret: "your-secret-token"
+
 knowledgeBasePath: "./knowledge-base"
 
 redis:
