@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
 
-import { TelegramAdapter } from './adapters/telegram';
+import { TelegramAdapter, TelegramWebhookConfig } from './adapters/telegram';
 import { AIEngine } from './ai/engine';
 import { KnowledgeBase } from './knowledge/knowledge-base';
 import { ContextManager } from './core/context-manager';
@@ -260,32 +260,45 @@ async function main() {
   console.log('[Init] ✅ Orchestrator');
 
   // 7. Telegram Adapter (основной бот для клиентов)
-  const telegramAdapter = new TelegramAdapter(telegramToken);
+  const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL || config.telegram?.webhook?.url;
+  const webhookConfig: TelegramWebhookConfig | undefined = webhookUrl ? {
+    url: webhookUrl,
+    path: process.env.TELEGRAM_WEBHOOK_PATH || config.telegram?.webhook?.path || '/webhook/telegram',
+    secretToken: process.env.TELEGRAM_WEBHOOK_SECRET || config.telegram?.webhook?.secret,
+  } : undefined;
+
+  const telegramAdapter = new TelegramAdapter(telegramToken, webhookConfig);
 
   telegramAdapter.setMessageHandler(async (message) => {
     try {
       const result = await orchestrator.handleIncomingMessage(message);
 
       if (result) {
+        // Extract businessConnectionId for business messages
+        const businessConnectionId = message.metadata?.custom?.businessConnectionId as string | undefined;
+
         // Имитация набора текста
-        await telegramAdapter.sendTypingIndicator(message.conversationId);
+        await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
 
         // Задержка для имитации набора
         await sleep(Math.min(result.typingDelay, 4000));
 
-        // Отправить ответ
+        // Отправить ответ (through business channel if applicable)
         await telegramAdapter.sendMessage(
           message.conversationId,
-          result.responseText
+          result.responseText,
+          businessConnectionId,
         );
       }
     } catch (error) {
       console.error('[Server] Ошибка обработки сообщения:', error);
 
       try {
+        const businessConnectionId = message.metadata?.custom?.businessConnectionId as string | undefined;
         await telegramAdapter.sendMessage(
           message.conversationId,
-          'Ой, что-то пошло не так. Попробуй написать ещё раз!'
+          'Ой, что-то пошло не так. Попробуй написать ещё раз!',
+          businessConnectionId,
         );
       } catch {
         console.error('[Server] Не удалось отправить сообщение об ошибке');
@@ -294,24 +307,37 @@ async function main() {
   });
 
   await telegramAdapter.initialize();
-  console.log('[Init] ✅ Telegram Adapter запущен');
+  const mode = telegramAdapter.isWebhookMode() ? 'webhook' : 'polling';
+  console.log(`[Init] ✅ Telegram Adapter запущен (${mode})`);
 
   // 8. HTTP сервер (healthcheck + метрики)
   const app = express();
   app.use(express.json());
+
+  // Webhook endpoint for Telegram (if webhook mode)
+  if (telegramAdapter.isWebhookMode()) {
+    const whPath = telegramAdapter.getWebhookPath();
+    app.post(whPath, telegramAdapter.getWebhookMiddleware());
+    console.log(`[Init] 📡 Webhook endpoint: POST ${whPath}`);
+  }
 
   app.get('/health', (_req, res) => {
     const metrics = orchestrator.getMetrics();
     res.json({
       status: 'ok',
       timestamp: Date.now(),
+      mode,
       ...metrics,
+      telegram: telegramAdapter.getMetrics(),
     });
   });
 
   app.get('/metrics', (_req, res) => {
     const metrics = orchestrator.getMetrics();
-    res.json(metrics);
+    res.json({
+      ...metrics,
+      telegram: telegramAdapter.getMetrics(),
+    });
   });
 
   // Ручное переключение в AI mode
