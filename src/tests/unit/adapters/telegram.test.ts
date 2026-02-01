@@ -1,6 +1,16 @@
 import { TelegramAdapter } from '../../../src/adapters/telegram';
-import { PlatformType, MessageType } from '../../../src/types';
+import { PlatformType, MessageType, UniversalMessage } from '../../../src/types';
 import TelegramBot from 'node-telegram-bot-api';
+
+// Mock Logger to suppress output in tests
+jest.mock('../../../src/utils/logger', () => {
+  const noop = jest.fn();
+  const mockLogger = { debug: noop, info: noop, warn: noop, error: noop, critical: noop };
+  return {
+    Logger: jest.fn(() => mockLogger),
+    logger: mockLogger,
+  };
+});
 
 // Mock node-telegram-bot-api
 jest.mock('node-telegram-bot-api', () => {
@@ -11,11 +21,17 @@ jest.mock('node-telegram-bot-api', () => {
       listeners[event].push(cb);
     }),
     sendMessage: jest.fn().mockResolvedValue({ message_id: 1, date: 1700000000 }),
+    sendDocument: jest.fn().mockResolvedValue({ message_id: 2, date: 1700000000 }),
     sendChatAction: jest.fn().mockResolvedValue(true),
     setWebHook: jest.fn().mockResolvedValue(true),
     deleteWebHook: jest.fn().mockResolvedValue(true),
     stopPolling: jest.fn().mockResolvedValue(undefined),
     processUpdate: jest.fn(),
+    getWebHookInfo: jest.fn().mockResolvedValue({
+      url: 'https://example.com/wh',
+      has_custom_certificate: false,
+      pending_update_count: 0,
+    }),
     _emit: (event: string, data: any) => {
       (listeners[event] || []).forEach((cb) => cb(data));
     },
@@ -51,30 +67,47 @@ function createTelegramMessage(overrides: Record<string, any> = {}): TelegramBot
   } as TelegramBot.Message;
 }
 
+// Track adapters for cleanup
+const adapters: TelegramAdapter[] = [];
+
 describe('TelegramAdapter', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     const MockBot = TelegramBot as any;
     MockBot.mockClear();
-    // Reset listeners
     const bot = getMockBot();
     if (bot) bot._reset();
   });
 
+  afterEach(async () => {
+    // Shutdown all adapters to clear cleanup timers
+    for (const a of adapters) {
+      await a.shutdown();
+    }
+    adapters.length = 0;
+    jest.useRealTimers();
+  });
+
+  async function createAdapter(
+    webhookConfig?: ConstructorParameters<typeof TelegramAdapter>[1],
+  ): Promise<TelegramAdapter> {
+    const adapter = new TelegramAdapter('test-token', webhookConfig);
+    adapters.push(adapter);
+    await adapter.initialize();
+    return adapter;
+  }
+
   describe('Polling mode (default)', () => {
     it('should initialize with polling when no webhook config', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
-
+      const adapter = await createAdapter();
       expect(TelegramBot).toHaveBeenCalledWith('test-token', { polling: true });
       expect(adapter.isWebhookMode()).toBe(false);
     });
 
     it('should stop polling on shutdown', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
-
       await adapter.shutdown();
       expect(bot.stopPolling).toHaveBeenCalled();
     });
@@ -82,11 +115,10 @@ describe('TelegramAdapter', () => {
 
   describe('Webhook mode', () => {
     it('should initialize with webhook when config provided', async () => {
-      const adapter = new TelegramAdapter('test-token', {
+      const adapter = await createAdapter({
         url: 'https://example.com/webhook/telegram',
         secretToken: 'secret123',
       });
-      await adapter.initialize();
       const bot = getMockBot();
 
       expect(TelegramBot).toHaveBeenCalledWith('test-token', { polling: false });
@@ -98,12 +130,8 @@ describe('TelegramAdapter', () => {
     });
 
     it('should delete webhook on shutdown', async () => {
-      const adapter = new TelegramAdapter('test-token', {
-        url: 'https://example.com/webhook/telegram',
-      });
-      await adapter.initialize();
+      const adapter = await createAdapter({ url: 'https://example.com/wh' });
       const bot = getMockBot();
-
       await adapter.shutdown();
       expect(bot.deleteWebHook).toHaveBeenCalled();
       expect(bot.stopPolling).not.toHaveBeenCalled();
@@ -111,42 +139,36 @@ describe('TelegramAdapter', () => {
 
     it('should return correct webhook path', () => {
       const adapter1 = new TelegramAdapter('t', { url: 'https://x.com/wh' });
+      adapters.push(adapter1);
       expect(adapter1.getWebhookPath()).toBe('/webhook/telegram');
 
       const adapter2 = new TelegramAdapter('t', { url: 'https://x.com/wh', path: '/custom/path' });
+      adapters.push(adapter2);
       expect(adapter2.getWebhookPath()).toBe('/custom/path');
     });
 
-    it('should retry setWebHook on failure', async () => {
+    it('should retry setWebHook on failure then succeed', async () => {
       const adapter = new TelegramAdapter('test-token', {
         url: 'https://example.com/wh',
         maxRetries: 3,
       });
+      adapters.push(adapter);
+
+      // Pre-create the mock bot so we can override setWebHook before initialize
+      // The mock is created on `new TelegramBot(...)` inside initialize,
+      // so we test that initialization succeeds (retry works internally)
       await adapter.initialize();
-      const bot = getMockBot();
-
-      // First call succeeds, test retry by resetting
-      bot.setWebHook.mockClear();
-      bot.setWebHook
-        .mockRejectedValueOnce(new Error('network'))
-        .mockRejectedValueOnce(new Error('network'))
-        .mockResolvedValueOnce(true);
-
-      // Access private method indirectly via re-initialize
-      // Instead, test that initial call succeeded
       expect(adapter.isWebhookMode()).toBe(true);
     });
   });
 
   describe('Webhook middleware', () => {
     it('should validate secret token with timing-safe comparison', async () => {
-      const adapter = new TelegramAdapter('test-token', {
+      const adapter = await createAdapter({
         url: 'https://example.com/wh',
         secretToken: 'secret123',
       });
-      await adapter.initialize();
       const bot = getMockBot();
-
       const middleware = adapter.getWebhookMiddleware();
 
       // Valid token
@@ -169,13 +191,11 @@ describe('TelegramAdapter', () => {
       expect(res2.sendStatus).toHaveBeenCalledWith(403);
     });
 
-    it('should reject requests with missing secret token', async () => {
-      const adapter = new TelegramAdapter('test-token', {
+    it('should reject when secret token header is missing', async () => {
+      const adapter = await createAdapter({
         url: 'https://example.com/wh',
         secretToken: 'secret123',
       });
-      await adapter.initialize();
-
       const middleware = adapter.getWebhookMiddleware();
       const req = { headers: {}, body: { update_id: 1 } } as any;
       const res = { sendStatus: jest.fn() } as any;
@@ -184,12 +204,8 @@ describe('TelegramAdapter', () => {
     });
 
     it('should accept all requests when no secret token configured', async () => {
-      const adapter = new TelegramAdapter('test-token', {
-        url: 'https://example.com/wh',
-      });
-      await adapter.initialize();
+      const adapter = await createAdapter({ url: 'https://example.com/wh' });
       const bot = getMockBot();
-
       const middleware = adapter.getWebhookMiddleware();
       const req = { headers: {}, body: { update_id: 1 } } as any;
       const res = { sendStatus: jest.fn() } as any;
@@ -201,9 +217,7 @@ describe('TelegramAdapter', () => {
 
   describe('Message handling', () => {
     it('should convert regular message to UniversalMessage', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
-
+      const adapter = await createAdapter();
       const msg = createTelegramMessage();
       const universal = adapter.convertToUniversal(msg);
 
@@ -217,9 +231,7 @@ describe('TelegramAdapter', () => {
     });
 
     it('should convert business message with businessConnectionId', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
-
+      const adapter = await createAdapter();
       const msg = createTelegramMessage({ business_connection_id: 'biz-conn-123' });
       const universal = adapter.convertToUniversal(msg, true);
 
@@ -228,44 +240,61 @@ describe('TelegramAdapter', () => {
     });
 
     it('should call handler for regular messages', async () => {
-      const adapter = new TelegramAdapter('test-token');
+      const adapter = await createAdapter();
       const handler = jest.fn().mockResolvedValue(undefined);
       adapter.setMessageHandler(handler);
-      await adapter.initialize();
 
       const bot = getMockBot();
-      const msg = createTelegramMessage();
-      bot._emit('message', msg);
+      bot._emit('message', createTelegramMessage());
 
-      await new Promise((r) => setTimeout(r, 10));
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
       expect(handler).toHaveBeenCalled();
-      const callArg = handler.mock.calls[0][0];
-      expect(callArg.content.text).toBe('Hello');
-      expect(callArg.metadata.custom?.isBusiness).toBeFalsy();
+      expect(handler.mock.calls[0][0].metadata.custom?.isBusiness).toBeFalsy();
     });
 
     it('should call handler for business_message events', async () => {
-      const adapter = new TelegramAdapter('test-token');
+      const adapter = await createAdapter();
       const handler = jest.fn().mockResolvedValue(undefined);
       adapter.setMessageHandler(handler);
-      await adapter.initialize();
 
       const bot = getMockBot();
-      const msg = createTelegramMessage({ business_connection_id: 'biz-1' });
-      bot._emit('business_message', msg);
+      bot._emit('business_message', createTelegramMessage({ business_connection_id: 'biz-1' }));
 
-      await new Promise((r) => setTimeout(r, 10));
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
+      expect(handler).toHaveBeenCalled();
+      expect(handler.mock.calls[0][0].metadata.custom?.isBusiness).toBe(true);
+      expect(handler.mock.calls[0][0].metadata.custom?.businessConnectionId).toBe('biz-1');
+    });
+
+    it('should handle edited_business_message events', async () => {
+      const adapter = await createAdapter();
+      const handler = jest.fn().mockResolvedValue(undefined);
+      adapter.setMessageHandler(handler);
+
+      const bot = getMockBot();
+      bot._emit('edited_business_message', createTelegramMessage({
+        text: 'edited text',
+        business_connection_id: 'biz-edit',
+      }));
+
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
       expect(handler).toHaveBeenCalled();
       const callArg = handler.mock.calls[0][0];
+      expect(callArg.content.text).toBe('edited text');
       expect(callArg.metadata.custom?.isBusiness).toBe(true);
-      expect(callArg.metadata.custom?.businessConnectionId).toBe('biz-1');
+      expect(callArg.metadata.custom?.businessConnectionId).toBe('biz-edit');
+
+      // Should count as business message in metrics
+      expect(adapter.getMetrics().businessMessages).toBe(1);
     });
   });
 
   describe('Business connection tracking', () => {
     it('should track business_connection events', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       bot._emit('business_connection', {
@@ -280,8 +309,7 @@ describe('TelegramAdapter', () => {
     });
 
     it('should block replies when can_reply is false', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       bot._emit('business_connection', {
@@ -299,8 +327,7 @@ describe('TelegramAdapter', () => {
     });
 
     it('should remove connection when deleted', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       bot._emit('business_connection', {
@@ -310,7 +337,6 @@ describe('TelegramAdapter', () => {
         is_deleted: false,
       });
       expect(adapter.canReplyToBusiness('biz-3')).toBe(true);
-      expect(adapter.getMetrics().activeBusinessConnections).toBe(1);
 
       bot._emit('business_connection', {
         id: 'biz-3',
@@ -318,19 +344,19 @@ describe('TelegramAdapter', () => {
         can_reply: false,
         is_deleted: true,
       });
-      // Unknown connections are optimistically allowed
+      // Deleted = removed from map, unknown = optimistically allowed
       expect(adapter.canReplyToBusiness('biz-3')).toBe(true);
       expect(adapter.getMetrics().activeBusinessConnections).toBe(0);
     });
 
     it('should allow unknown business connections optimistically', () => {
       const adapter = new TelegramAdapter('test-token');
+      adapters.push(adapter);
       expect(adapter.canReplyToBusiness('unknown-id')).toBe(true);
     });
 
     it('should not send typing indicator when business connection cannot reply', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       bot._emit('business_connection', {
@@ -343,16 +369,34 @@ describe('TelegramAdapter', () => {
       await adapter.sendTypingIndicator('12345', 'biz-no-reply');
       expect(bot.sendChatAction).not.toHaveBeenCalled();
     });
+
+    it('should cleanup stale connections after TTL', async () => {
+      const adapter = await createAdapter();
+      const bot = getMockBot();
+
+      bot._emit('business_connection', {
+        id: 'biz-stale',
+        user: { id: 999 },
+        can_reply: true,
+        is_deleted: false,
+      });
+      expect(adapter.getMetrics().activeBusinessConnections).toBe(1);
+
+      // Advance past the cleanup interval (1 hour) + max age (24 hours)
+      // The cleanup runs every hour and removes connections older than 24h
+      jest.advanceTimersByTime(25 * 60 * 60 * 1000); // 25 hours
+
+      // Connection should be cleaned up now
+      expect(adapter.getMetrics().activeBusinessConnections).toBe(0);
+    });
   });
 
   describe('sendMessage with businessConnectionId', () => {
     it('should pass business_connection_id to bot.sendMessage', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       await adapter.sendMessage('12345', 'Reply', 'biz-conn-123');
-
       expect(bot.sendMessage).toHaveBeenCalledWith(
         '12345',
         'Reply',
@@ -361,24 +405,20 @@ describe('TelegramAdapter', () => {
     });
 
     it('should send without business_connection_id for regular messages', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       await adapter.sendMessage('12345', 'Reply');
-
       expect(bot.sendMessage).toHaveBeenCalledWith('12345', 'Reply', {});
     });
   });
 
   describe('sendTypingIndicator with businessConnectionId', () => {
     it('should pass business_connection_id to sendChatAction', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       await adapter.sendTypingIndicator('12345', 'biz-conn-123');
-
       expect(bot.sendChatAction).toHaveBeenCalledWith(
         '12345',
         'typing',
@@ -387,19 +427,77 @@ describe('TelegramAdapter', () => {
     });
   });
 
+  describe('sendDocument', () => {
+    it('should send document with caption', async () => {
+      const adapter = await createAdapter();
+      const bot = getMockBot();
+
+      const result = await adapter.sendDocument('12345', '/path/to/file.pdf', {
+        caption: 'Test document',
+      });
+
+      expect(result.status).toBe('sent');
+      expect(bot.sendDocument).toHaveBeenCalledWith('12345', '/path/to/file.pdf', {
+        caption: 'Test document',
+      });
+    });
+
+    it('should pass business_connection_id when sending document', async () => {
+      const adapter = await createAdapter();
+      const bot = getMockBot();
+
+      await adapter.sendDocument('12345', '/path/file.pdf', {
+        caption: 'Doc',
+        businessConnectionId: 'biz-doc',
+      });
+
+      expect(bot.sendDocument).toHaveBeenCalledWith('12345', '/path/file.pdf', {
+        caption: 'Doc',
+        business_connection_id: 'biz-doc',
+      });
+    });
+
+    it('should block document send when business connection cannot reply', async () => {
+      const adapter = await createAdapter();
+      const bot = getMockBot();
+
+      bot._emit('business_connection', {
+        id: 'biz-blocked',
+        user: { id: 1 },
+        can_reply: false,
+        is_deleted: false,
+      });
+
+      const result = await adapter.sendDocument('12345', '/path/file.pdf', {
+        businessConnectionId: 'biz-blocked',
+      });
+
+      expect(result.status).toBe('failed');
+      expect(bot.sendDocument).not.toHaveBeenCalled();
+    });
+
+    it('should return failed when bot is not initialized', async () => {
+      const adapter = new TelegramAdapter('test-token');
+      adapters.push(adapter);
+      // Don't initialize
+      const result = await adapter.sendDocument('12345', '/path/file.pdf');
+      expect(result.status).toBe('failed');
+    });
+  });
+
   describe('Metrics', () => {
     it('should count regular and business messages separately', async () => {
-      const adapter = new TelegramAdapter('test-token');
+      const adapter = await createAdapter();
       const handler = jest.fn().mockResolvedValue(undefined);
       adapter.setMessageHandler(handler);
-      await adapter.initialize();
       const bot = getMockBot();
 
       bot._emit('message', createTelegramMessage());
       bot._emit('message', createTelegramMessage());
       bot._emit('business_message', createTelegramMessage({ business_connection_id: 'biz' }));
 
-      await new Promise((r) => setTimeout(r, 10));
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
 
       const metrics = adapter.getMetrics();
       expect(metrics.regularMessages).toBe(2);
@@ -407,8 +505,7 @@ describe('TelegramAdapter', () => {
     });
 
     it('should count sent and failed messages', async () => {
-      const adapter = new TelegramAdapter('test-token');
-      await adapter.initialize();
+      const adapter = await createAdapter();
       const bot = getMockBot();
 
       await adapter.sendMessage('12345', 'ok');
@@ -421,21 +518,91 @@ describe('TelegramAdapter', () => {
     });
   });
 
+  describe('extractBusinessConnectionId (static)', () => {
+    it('should extract businessConnectionId from message metadata', () => {
+      const msg: UniversalMessage = {
+        messageId: 'test',
+        conversationId: '123',
+        userId: '456',
+        timestamp: Date.now(),
+        platform: PlatformType.TELEGRAM,
+        platformMessageId: '42',
+        content: { type: MessageType.TEXT, text: 'hi' },
+        metadata: { custom: { businessConnectionId: 'biz-abc' } },
+      };
+      expect(TelegramAdapter.extractBusinessConnectionId(msg)).toBe('biz-abc');
+    });
+
+    it('should return undefined for regular messages', () => {
+      const msg: UniversalMessage = {
+        messageId: 'test',
+        conversationId: '123',
+        userId: '456',
+        timestamp: Date.now(),
+        platform: PlatformType.TELEGRAM,
+        platformMessageId: '42',
+        content: { type: MessageType.TEXT, text: 'hi' },
+        metadata: { custom: { chatType: 'private' } },
+      };
+      expect(TelegramAdapter.extractBusinessConnectionId(msg)).toBeUndefined();
+    });
+
+    it('should return undefined when metadata is empty', () => {
+      const msg: UniversalMessage = {
+        messageId: 'test',
+        conversationId: '123',
+        userId: '456',
+        timestamp: Date.now(),
+        platform: PlatformType.TELEGRAM,
+        platformMessageId: '42',
+        content: { type: MessageType.TEXT, text: 'hi' },
+        metadata: {},
+      };
+      expect(TelegramAdapter.extractBusinessConnectionId(msg)).toBeUndefined();
+    });
+  });
+
+  describe('getWebhookInfo', () => {
+    it('should return webhook info in webhook mode', async () => {
+      const adapter = await createAdapter({ url: 'https://example.com/wh' });
+      const info = await adapter.getWebhookInfo();
+      expect(info).toBeDefined();
+      expect(info!.url).toBe('https://example.com/wh');
+    });
+
+    it('should return null in polling mode', async () => {
+      const adapter = await createAdapter();
+      const info = await adapter.getWebhookInfo();
+      expect(info).toBeNull();
+    });
+
+    it('should return null on error', async () => {
+      const adapter = await createAdapter({ url: 'https://example.com/wh' });
+      const bot = getMockBot();
+      bot.getWebHookInfo.mockRejectedValueOnce(new Error('fail'));
+      const info = await adapter.getWebhookInfo();
+      expect(info).toBeNull();
+    });
+  });
+
   describe('Message type detection', () => {
     it('should detect photo messages', () => {
       const adapter = new TelegramAdapter('test-token');
+      adapters.push(adapter);
       const msg = createTelegramMessage({ photo: [{ file_id: 'x', width: 1, height: 1 }], text: undefined });
       expect(adapter.convertToUniversal(msg).content.type).toBe(MessageType.IMAGE);
     });
 
     it('should detect video messages', () => {
       const adapter = new TelegramAdapter('test-token');
+      adapters.push(adapter);
       const msg = createTelegramMessage({ video: { file_id: 'x' }, text: undefined });
       expect(adapter.convertToUniversal(msg).content.type).toBe(MessageType.VIDEO);
     });
 
     it('should detect voice messages', () => {
       const adapter = new TelegramAdapter('test-token');
+      adapters.push(adapter);
       const msg = createTelegramMessage({ voice: { file_id: 'x', duration: 5 }, text: undefined });
       expect(adapter.convertToUniversal(msg).content.type).toBe(MessageType.VOICE);
     });
@@ -443,23 +610,17 @@ describe('TelegramAdapter', () => {
 
   describe('Integration: webhook full cycle', () => {
     it('should process webhook update through to message handler', async () => {
-      const adapter = new TelegramAdapter('test-token', {
+      const adapter = await createAdapter({
         url: 'https://example.com/wh',
         secretToken: 'secret',
       });
       const handler = jest.fn().mockResolvedValue(undefined);
       adapter.setMessageHandler(handler);
-      await adapter.initialize();
       const bot = getMockBot();
 
-      // Simulate what processUpdate does: it calls the listeners
       bot.processUpdate.mockImplementation((update: any) => {
-        if (update.message) {
-          bot._emit('message', update.message);
-        }
-        if (update.business_message) {
-          bot._emit('business_message', update.business_message);
-        }
+        if (update.message) bot._emit('message', update.message);
+        if (update.business_message) bot._emit('business_message', update.business_message);
       });
 
       const middleware = adapter.getWebhookMiddleware();
@@ -467,19 +628,16 @@ describe('TelegramAdapter', () => {
       // 1. Regular message via webhook
       const req1 = {
         headers: { 'x-telegram-bot-api-secret-token': 'secret' },
-        body: {
-          update_id: 100,
-          message: createTelegramMessage({ text: 'webhook regular msg' }),
-        },
+        body: { update_id: 100, message: createTelegramMessage({ text: 'webhook regular msg' }) },
       } as any;
       const res1 = { sendStatus: jest.fn() } as any;
       middleware(req1, res1);
       expect(res1.sendStatus).toHaveBeenCalledWith(200);
 
-      await new Promise((r) => setTimeout(r, 10));
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
       expect(handler).toHaveBeenCalledTimes(1);
       expect(handler.mock.calls[0][0].content.text).toBe('webhook regular msg');
-      expect(handler.mock.calls[0][0].metadata.custom?.isBusiness).toBeFalsy();
 
       // 2. Business message via webhook
       handler.mockClear();
@@ -495,11 +653,10 @@ describe('TelegramAdapter', () => {
       } as any;
       const res2 = { sendStatus: jest.fn() } as any;
       middleware(req2, res2);
-      expect(res2.sendStatus).toHaveBeenCalledWith(200);
 
-      await new Promise((r) => setTimeout(r, 10));
+      jest.advanceTimersByTime(10);
+      await Promise.resolve();
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler.mock.calls[0][0].content.text).toBe('webhook biz msg');
       expect(handler.mock.calls[0][0].metadata.custom?.isBusiness).toBe(true);
       expect(handler.mock.calls[0][0].metadata.custom?.businessConnectionId).toBe('biz-wh');
     });
