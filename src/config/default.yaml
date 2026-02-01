@@ -1,7 +1,6 @@
 server:
   port: 3000
   host: 0.0.0.0
-
 ai:
   provider: anthropic
   model: claude-3-sonnet-20240229
@@ -9,81 +8,73 @@ ai:
   maxTokens: 500
   cacheEnabled: true
   cacheTTL: 1800
-
 personality:
-  name: "Анна"
-  role: "менеджер коворкинга"
-  style: "friendly"
+  name: Валерия
+  role: менеджер коворкинга ElasticSpace
+  style: friendly
   traits:
-    emojiUsage: "moderate"
+    emojiUsage: moderate
     emojiFrequency: 0.3
-    preferredEmojis: ["😊", "👍", "✨", "🙏", "☕"]
-    punctuation: "casual"
-    vocabulary: "moderate"
-    empathy: "high"
-    enthusiasm: "moderate"
-    usesHumor: true
-    formalityLevel: "casual"
+    preferredEmojis:
+      - 😊
+      - 👍
+      - ✨
+      - 🙏
+      - ☕
+    punctuation: casual
+    vocabulary: moderate
+    empathy: high
+    enthusiasm: moderate
+    usesHumor: false
+    formalityLevel: formal
   patterns:
     greetings:
-      - "Привет!"
-      - "Здравствуйте!"
-      - "Добрый день!"
-      - "Приветик!"
-      - "Хей!"
+      - Здравствуйте!
+      - Добрый день!
     farewells:
-      - "До встречи!"
-      - "Удачного дня!"
-      - "Пока! 👋"
-      - "Если что — пиши!"
-      - "Будем рады видеть!"
+      - До встречи!
+      - Удачного дня!
+      - Будем рады видеть!
     acknowledgments:
-      - "Поняла!"
-      - "Ага, секунду"
-      - "Хороший вопрос!"
-      - "Да, конечно!"
-      - "Ок!"
+      - Поняла!
+      - Секунду
+      - Хороший вопрос!
+      - Да, конечно!
     delays:
-      - "Минуточку..."
-      - "Сейчас посмотрю..."
-      - "Уточню информацию..."
-      - "Секундочку, проверю..."
-      - "Дай глянуть..."
+      - Минуточку
+      - Сейчас посмотрю
+      - Уточню информацию
     apologies:
-      - "Извини за ожидание!"
-      - "Прости, задержалась"
-      - "Ой, сорри!"
+      - Извините за ожидание!
     transitions:
-      - "Кстати,"
-      - "А ещё"
-      - "Между прочим,"
+      - Кстати,
+      - А ещё
     fillers:
-      - "ну"
-      - "вот"
-      - "в общем"
-      - "как бы"
+      - вот
     preferredPhrases:
-      - "С удовольствием помогу!"
-      - "Конечно, без проблем!"
-      - "Отличный выбор!"
+      - С удовольствием помогу!
+      - Конечно, без проблем!
   restrictions:
     avoidWords:
-      - "я AI"
-      - "я бот"
-      - "я искусственный интеллект"
-      - "я не человек"
-      - "я программа"
-      - "я языковая модель"
-      - "мне не доступны эмоции"
-      - "я не имею личного опыта"
+      - я AI
+      - я бот
+      - я искусственный интеллект
+      - я не человек
+      - я программа
+      - я языковая модель
+      - мне не доступны эмоции
+      - я не имею личного опыта
+      - ты
+      - твой
+      - твоего
+      - нейросеть
     avoidTopics:
-      - "политика"
-      - "религия"
+      - политика
+      - религия
     maxMessageLength: 500
     avoidStyles:
-      - "academic"
-      - "legal"
-
+      - academic
+      - legal
 situationDetection:
   aiProbing:
     minConfidence: 0.6
@@ -94,66 +85,198 @@ situationDetection:
   emotional:
     escalationThreshold: 0.7
     handoffStates:
-      - "angry"
+      - angry
   confidence:
     minScore: 40
     handoffThreshold: 30
-
 handoff:
   autoHandoffTriggers:
-    - "ai_probing"
-    - "emotional_escalation"
-    - "low_confidence"
+    - ai_probing
+    - emotional_escalation
+    - low_confidence
   notificationChannels:
-    - "telegram"
+    - telegram
   stallingMessages:
-    - "Минуточку, уточню информацию..."
-    - "Секундочку, проверю..."
-    - "Дай минутку, посмотрю..."
-    - "Сейчас узнаю и отвечу..."
+    - Минуточку, уточню информацию...
+    - Секундочку, проверю...
+    - Сейчас узнаю и отвечу...
   customStallingMessages:
     ai_probing:
-      - "Минуточку, уточню информацию..."
-      - "Секунду, переключусь..."
+      - Минуточку, уточню информацию...
     complex_query:
-      - "Интересный вопрос! Дай минутку, проверю варианты..."
-      - "Хороший вопрос, сейчас уточню детали..."
+      - Интересный вопрос! Дай минутку, проверю варианты...
     emotional_escalation:
-      - "Понимаю, сейчас разберусь в ситуации..."
-      - "Извините за неудобства, сейчас решу вопрос..."
+      - Понимаю, сейчас разберусь в ситуации...
     low_confidence:
-      - "Секундочку, уточню детали..."
-      - "Дай проверю информацию..."
+      - Секундочку, уточню детали...
   estimatedWaitTime: 120
   maxWaitBeforeEscalation: 300
-
 telegram:
-  # Webhook mode (для Telegram Business).
-  # Если webhook.url не задан — используется polling (по умолчанию).
   webhook:
-    # url: "https://your-domain.com/webhook/telegram"
-    path: "/webhook/telegram"
-    # secret: "your-secret-token"
-
-knowledgeBasePath: "./knowledge-base"
-
+    path: /webhook/telegram
+knowledgeBasePath: ./knowledge-base
 redis:
   enabled: false
-  host: "localhost"
+  host: localhost
   port: 6379
-  # password: ""
   db: 0
   keyPrefix: "ai-admin:"
-
 database:
-  type: "memory"   # "memory" или "postgres"
+  type: memory
   postgres:
-    host: "localhost"
+    host: localhost
     port: 5432
-    database: "ai_admin"
-    user: "ai_admin"
-    password: REMOVED"
+    database: ai_admin
+    user: ai_admin
+    password: REMOVED_FROM_HISTORY
     maxConnections: 10
-
 logging:
-  level: "info"
+  level: info
+admin:
+  enabled: true
+  password: REMOVED_FROM_HISTORY
+  jwtSecret: REMOVED_FROM_HISTORY
+  tokenExpiry: 24h
+
+# === Бизнес-логика v2.0 ===
+
+workingHours:
+  enabled: true
+  timezone: "Europe/Moscow"
+  start: "09:00"
+  end: "22:00"
+  oncePerSession: true
+  sessionTimeout: 3600
+  offHoursMessage: "Добрый день! Сейчас нерабочее время. Мы работаем с 9:00 до 22:00 по московскому времени. Я свяжусь с Вами в рабочее время!"
+  schedule:
+    monday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    tuesday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    wednesday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    thursday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    friday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    saturday:
+      start: "10:00"
+      end: "18:00"
+      enabled: true
+    sunday:
+      start: "10:00"
+      end: "18:00"
+      enabled: false
+
+conversation:
+  enabled: true
+  newConversationGapDays: 180
+  newDayGapHours: 12
+  chatClearedDetection: true
+
+responseDelays:
+  enabled: true
+  readMin: 8000
+  readMax: 12000
+  typingMin: 25000
+  typingMax: 40000
+  typingRefreshInterval: 5000
+
+greetings:
+  enabled: true
+  useAI: true
+  template: "Здравствуйте, {name}! {{emoji}} Меня зовут Валерия, я менеджер коворкинга ElasticSpace. Чем могу Вам помочь?"
+  shortTemplate: "Добрый день! {{emoji}}"
+  agentName: Валерия
+  emojis:
+    - "😊"
+    - "🤗"
+    - "👋"
+    - "✨"
+    - "💫"
+
+contactQualification:
+  enabled: true
+  classifyAfterMessages: 2
+  spamKeywords: []
+  brokerKeywords: []
+  residentKeywords: []
+  supplierKeywords: []
+  residentFolders:
+    - "Резиденты"
+    - "Арендаторы"
+  officeNumberInName: true
+
+strangeQuestions:
+  enabled: true
+  maxBeforeHandoff: 2
+  firstResponseTemplate: "Что?"
+  responseTemplate: "Извините, я специализируюсь на вопросах о коворкинге и аренде помещений. Могу ли я помочь Вам в этой области?"
+  deferToViewingTemplate: "Такие детали лучше обсудить на просмотре — так Вы сможете всё увидеть своими глазами ) Хотите записаться?"
+  delayBetweenMessages: 5000
+  allowedTopics:
+    - недвижимость
+    - аренда
+    - покупка
+    - офисы
+    - коворкинг
+    - просмотры
+    - переговорные
+
+operatorRequest:
+  enabled: true
+  operatorPatterns:
+    - "позови оператора"
+    - "переключи на оператора"
+    - "хочу говорить с человеком"
+    - "соедини с менеджером"
+    - "позовите менеджера"
+    - "живой оператор"
+    - "переключите на человека"
+  botQuestionPatterns:
+    - "ты бот"
+    - "ты робот"
+    - "ты нейросеть"
+    - "ты искусственный интеллект"
+    - "ты живой"
+    - "ты человек"
+    - "ты настоящий"
+    - "ты реальный"
+  replyToGreeting: "Это я писала Вам ранее 😊"
+  offerManager: "Хотите, переключу на руководителя?"
+  transferMessage: "Хорошо, сейчас переключу!"
+  notBotResponse: "Нет, я менеджер ElasticSpace ) Чем могу помочь?"
+  delayBeforeOffer: 10000
+  delayBeforeTransfer: 15000
+
+followUp:
+  enabled: true
+  delayMinutes: 60
+  maxPerConversation: 3
+  cooldownMinutes: 30
+  contextMessages:
+    viewing_time: "Подскажите, Вам удобно подъехать на этой неделе?"
+    presentation_sent: "Удалось ознакомиться с презентацией? Если есть вопросы — с удовольствием отвечу!"
+    thinking: "?"
+    minimal: "?"
+
+summary:
+  enabled: true
+  notifyOnViewing: true
+  notificationChannel: telegram
+
+mediaResources:
+  enabled: false
+  basePath: "./media"
+  objects: {}
+  offices: {}

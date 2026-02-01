@@ -1,5 +1,5 @@
 // ============================================================
-// Server Entry Point - AI-агент первой линии поддержки
+// Server Entry Point - AI-агент первой линии поддержки (v2.0)
 // ============================================================
 
 import express from 'express';
@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
 
+import { createAdminRouter } from './admin';
 import { TelegramAdapter, TelegramWebhookConfig } from './adapters/telegram';
 import { AIEngine } from './ai/engine';
 import { KnowledgeBase } from './knowledge/knowledge-base';
@@ -15,10 +16,21 @@ import { ContextManager } from './core/context-manager';
 import { SituationDetector } from './core/situation-detector';
 import { HumanMimicry } from './core/human-mimicry';
 import { HandoffSystem } from './core/handoff-system';
-import { Orchestrator, OrchestratorConfig } from './core/orchestrator';
+import { Orchestrator, OrchestratorConfig, OrchestratorResponse } from './core/orchestrator';
+import { ResourceManager, ResourcesConfig } from './core/resource-manager';
 import { DataLayer, DataLayerConfig } from './data';
 import { createCache } from './utils/cache-factory';
 import { ICache } from './utils/cache';
+import { WorkingHoursService, WorkingHoursConfig } from './core/working-hours';
+import { ResponseDelayService, ResponseDelayConfig } from './core/response-delay';
+import { GreetingService, GreetingConfig } from './core/greeting-service';
+import { ContactQualifier, QualifierConfig } from './core/contact-qualifier';
+import { StrangeQuestionHandler, StrangeQuestionConfig } from './core/strange-question-handler';
+import { FollowUpService, FollowUpConfig } from './core/followup-service';
+import { SummaryService, SummaryConfig } from './core/summary-service';
+import { MediaResourceService, MediaResourceConfig } from './core/media-resource-service';
+import { ConversationDetector, ConversationDetectorConfig } from './core/conversation-detector';
+import { OperatorRequestHandler, OperatorRequestConfig } from './core/operator-request-handler';
 import {
   AIProvider,
   PlatformType,
@@ -46,7 +58,7 @@ async function loadConfig(): Promise<any> {
 
 async function main() {
   console.log('================================================');
-  console.log('  AI First-Line Support Agent');
+  console.log('  AI First-Line Support Agent v2.0');
   console.log('  Запуск системы...');
   console.log('================================================');
 
@@ -70,8 +82,8 @@ async function main() {
 
   // 2. Personality
   const personality: PersonalityProfile = config.personality || {
-    name: 'Анна',
-    role: 'менеджер коворкинга',
+    name: 'Валерия',
+    role: 'менеджер коворкинга ElasticSpace',
     style: 'friendly',
     traits: {
       emojiUsage: 'moderate',
@@ -82,20 +94,23 @@ async function main() {
       empathy: 'high',
       enthusiasm: 'moderate',
       usesHumor: true,
-      formalityLevel: 'casual',
+      formalityLevel: 'formal',
     },
     patterns: {
-      greetings: ['Привет!', 'Здравствуйте!', 'Добрый день!'],
+      greetings: ['Здравствуйте!', 'Добрый день!'],
       farewells: ['До встречи!', 'Удачного дня!'],
-      acknowledgments: ['Поняла!', 'Ага, секунду'],
+      acknowledgments: ['Поняла!', 'Секунду'],
       delays: ['Минуточку...', 'Сейчас посмотрю...'],
-      apologies: ['Извини за ожидание!'],
+      apologies: ['Извините за ожидание!'],
       transitions: ['Кстати,', 'А ещё'],
-      fillers: ['ну', 'вот'],
+      fillers: ['вот'],
       preferredPhrases: ['С удовольствием помогу!'],
     },
     restrictions: {
-      avoidWords: ['я AI', 'я бот', 'я искусственный интеллект', 'я не человек'],
+      avoidWords: [
+        'я AI', 'я бот', 'я искусственный интеллект', 'я не человек',
+        'я программа', 'я языковая модель', 'ты', 'твой', 'твоего',
+      ],
       avoidTopics: ['политика', 'религия'],
       maxMessageLength: 500,
       avoidStyles: ['academic'],
@@ -201,7 +216,6 @@ async function main() {
   console.log('[Init] ✅ Human Mimicry');
 
   // AI Engine
-  // Pass API key through config metadata
   aiEngineConfig.metadata = { apiKey: anthropicApiKey };
   const aiEngine = new AIEngine(aiEngineConfig);
   aiEngine.initialize();
@@ -233,6 +247,94 @@ async function main() {
   const handoffSystem = new HandoffSystem(handoffConfig, notifyManager);
   console.log('[Init] ✅ Handoff System');
 
+  // Resource Manager (optional)
+  let resourceManager: ResourceManager | undefined;
+  if (config.resources) {
+    try {
+      const resourceBasePath = path.resolve(__dirname, '..', config.resources.basePath || './resources');
+      const resourcesConfig: ResourcesConfig = {
+        basePath: resourceBasePath,
+        links: config.resources.links || {},
+        resources: config.resources.items || [],
+      };
+      resourceManager = new ResourceManager(resourcesConfig);
+      console.log('[Init] ✅ Resource Manager');
+    } catch (err) {
+      console.warn('[Init] ⚠️ Ошибка загрузки ресурсов:', err);
+    }
+  }
+
+  // === Новые бизнес-сервисы ===
+
+  // Working Hours
+  let workingHoursService: WorkingHoursService | undefined;
+  if (config.workingHours?.enabled) {
+    workingHoursService = new WorkingHoursService(config.workingHours as WorkingHoursConfig);
+    console.log('[Init] ✅ Working Hours Service');
+  }
+
+  // Greeting Service
+  let greetingService: GreetingService | undefined;
+  if (config.greetings?.enabled) {
+    greetingService = new GreetingService(
+      config.greetings as GreetingConfig,
+      aiEngine
+    );
+    console.log('[Init] ✅ Greeting Service');
+  }
+
+  // Contact Qualifier
+  let contactQualifier: ContactQualifier | undefined;
+  if (config.contactQualification?.enabled) {
+    contactQualifier = new ContactQualifier(
+      config.contactQualification as QualifierConfig,
+      aiEngine
+    );
+    console.log('[Init] ✅ Contact Qualifier');
+  }
+
+  // Strange Question Handler
+  let strangeQuestionHandler: StrangeQuestionHandler | undefined;
+  if (config.strangeQuestions?.enabled) {
+    strangeQuestionHandler = new StrangeQuestionHandler(
+      config.strangeQuestions as StrangeQuestionConfig,
+      aiEngine
+    );
+    console.log('[Init] ✅ Strange Question Handler');
+  }
+
+  // Summary Service
+  let summaryService: SummaryService | undefined;
+  if (config.summary?.enabled) {
+    summaryService = new SummaryService(
+      config.summary as SummaryConfig,
+      aiEngine,
+      notifyManager
+    );
+    console.log('[Init] ✅ Summary Service');
+  }
+
+  // Media Resource Service
+  let mediaResourceService: MediaResourceService | undefined;
+  if (config.mediaResources?.enabled) {
+    mediaResourceService = new MediaResourceService(config.mediaResources as MediaResourceConfig);
+    console.log('[Init] ✅ Media Resource Service');
+  }
+
+  // Conversation Detector
+  let conversationDetector: ConversationDetector | undefined;
+  if (config.conversation?.enabled) {
+    conversationDetector = new ConversationDetector(config.conversation as ConversationDetectorConfig);
+    console.log('[Init] ✅ Conversation Detector');
+  }
+
+  // Operator Request Handler
+  let operatorRequestHandler: OperatorRequestHandler | undefined;
+  if (config.operatorRequest?.enabled) {
+    operatorRequestHandler = new OperatorRequestHandler(config.operatorRequest as OperatorRequestConfig);
+    console.log('[Init] ✅ Operator Request Handler');
+  }
+
   // Orchestrator
   const orchestratorConfig: OrchestratorConfig = {
     aiEngine: aiEngineConfig,
@@ -242,8 +344,8 @@ async function main() {
     knowledgeBasePath,
     limits: {
       maxMessageLength: 2000,
-      maxConversationDuration: 86400, // 24h
-      maxInactiveTime: 3600, // 1h
+      maxConversationDuration: 86400,
+      maxInactiveTime: 3600,
     },
   };
 
@@ -254,6 +356,15 @@ async function main() {
     handoffSystem,
     aiEngine,
     knowledgeBase,
+    resourceManager,
+    workingHoursService,
+    greetingService,
+    contactQualifier,
+    strangeQuestionHandler,
+    summaryService,
+    mediaResourceService,
+    conversationDetector,
+    operatorRequestHandler,
   });
 
   await orchestrator.start();
@@ -269,36 +380,91 @@ async function main() {
 
   const telegramAdapter = new TelegramAdapter(telegramToken, webhookConfig);
 
+  // Response Delay Service (initialized after telegramAdapter)
+  let responseDelayService: ResponseDelayService | undefined;
+  if (config.responseDelays?.enabled) {
+    responseDelayService = new ResponseDelayService(
+      config.responseDelays as ResponseDelayConfig,
+      telegramAdapter
+    );
+    console.log('[Init] ✅ Response Delay Service');
+  }
+
+  // Follow-Up Service (initialized after telegramAdapter)
+  let followUpService: FollowUpService | undefined;
+  if (config.followUp?.enabled) {
+    followUpService = new FollowUpService(
+      config.followUp as FollowUpConfig,
+      aiEngine,
+      telegramAdapter
+    );
+    // Inject into orchestrator (it was created without followUpService)
+    (orchestrator as any).followUpService = followUpService;
+    console.log('[Init] ✅ Follow-Up Service');
+  }
+
   telegramAdapter.setMessageHandler(async (message) => {
     try {
       const result = await orchestrator.handleIncomingMessage(message);
 
       if (result) {
-        // Extract businessConnectionId for business messages
-        const businessConnectionId = message.metadata?.custom?.businessConnectionId as string | undefined;
+        const businessConnectionId = TelegramAdapter.extractBusinessConnectionId(message);
 
-        // Имитация набора текста
-        await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+        // Использовать ResponseDelayService если доступен
+        if (responseDelayService?.isEnabled()) {
+          await responseDelayService.executeDelay(
+            message.conversationId,
+            businessConnectionId,
+            message.content.text || '',
+            result.responseText
+          );
+        } else {
+          await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+          await sleep(Math.min(result.typingDelay, 4000));
+        }
 
-        // Задержка для имитации набора
-        await sleep(Math.min(result.typingDelay, 4000));
-
-        // Отправить ответ (through business channel if applicable)
+        // Отправить основной ответ
         await telegramAdapter.sendMessage(
           message.conversationId,
           result.responseText,
           businessConnectionId,
         );
+
+        // Отправить дополнительные сообщения (multi-message pattern)
+        if (result.additionalMessages) {
+          for (const addMsg of result.additionalMessages) {
+            if (addMsg.delayMs > 0) {
+              await sleep(addMsg.delayMs);
+            }
+            await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+            await sleep(Math.min(1500 + Math.random() * 2000, 3000));
+            await telegramAdapter.sendMessage(
+              message.conversationId,
+              addMsg.text,
+              businessConnectionId,
+            );
+          }
+        }
+
+        // Отправить прикреплённый ресурс (файл/ссылку), если есть
+        if (result.attachment) {
+          if (result.attachment.type === 'file' && result.attachment.filePath) {
+            await telegramAdapter.sendDocument(
+              message.conversationId,
+              result.attachment.filePath,
+              { caption: result.attachment.caption, businessConnectionId },
+            );
+          }
+        }
       }
     } catch (error) {
       console.error('[Server] Ошибка обработки сообщения:', error);
 
       try {
-        const businessConnectionId = message.metadata?.custom?.businessConnectionId as string | undefined;
         await telegramAdapter.sendMessage(
           message.conversationId,
-          'Ой, что-то пошло не так. Попробуй написать ещё раз!',
-          businessConnectionId,
+          'Извините, что-то пошло не так. Попробуйте написать ещё раз!',
+          TelegramAdapter.extractBusinessConnectionId(message),
         );
       } catch {
         console.error('[Server] Не удалось отправить сообщение об ошибке');
@@ -321,22 +487,30 @@ async function main() {
     console.log(`[Init] 📡 Webhook endpoint: POST ${whPath}`);
   }
 
-  app.get('/health', (_req, res) => {
+  app.get('/health', async (_req, res) => {
     const metrics = orchestrator.getMetrics();
+    const webhookInfo = await telegramAdapter.getWebhookInfo();
     res.json({
       status: 'ok',
       timestamp: Date.now(),
       mode,
       ...metrics,
-      telegram: telegramAdapter.getMetrics(),
+      telegram: {
+        ...telegramAdapter.getMetrics(),
+        ...(webhookInfo ? { webhook: webhookInfo } : {}),
+      },
     });
   });
 
-  app.get('/metrics', (_req, res) => {
+  app.get('/metrics', async (_req, res) => {
     const metrics = orchestrator.getMetrics();
+    const webhookInfo = await telegramAdapter.getWebhookInfo();
     res.json({
       ...metrics,
-      telegram: telegramAdapter.getMetrics(),
+      telegram: {
+        ...telegramAdapter.getMetrics(),
+        ...(webhookInfo ? { webhook: webhookInfo } : {}),
+      },
     });
   });
 
@@ -358,11 +532,28 @@ async function main() {
     res.json({ conversationId: id, mode: isHuman ? 'human' : 'ai' });
   });
 
+  // Admin Panel
+  if (config.admin?.enabled) {
+    const adminRouter = createAdminRouter({
+      dataLayer,
+      knowledgeBase,
+      orchestrator,
+      configPath: path.resolve(__dirname, '../config/default.yaml'),
+      knowledgeBasePath,
+      anthropicApiKey,
+    });
+    app.use('/', adminRouter);
+    console.log('[Init] ✅ Admin panel enabled');
+  }
+
   app.listen(port, () => {
     console.log('================================================');
     console.log(`  🚀 Сервер запущен на порту ${port}`);
     console.log(`  📡 Health: http://localhost:${port}/health`);
     console.log(`  📊 Metrics: http://localhost:${port}/metrics`);
+    if (config.admin?.enabled) {
+      console.log(`  🔧 Admin: http://localhost:${port}/admin`);
+    }
     console.log('================================================');
   });
 

@@ -10,6 +10,10 @@ import {
   MessageType,
   Language,
 } from '../types';
+import type { BusinessConnectionUpdate, BusinessMessage, WebhookInfo } from '../types/telegram-business';
+import { Logger } from '../utils/logger';
+
+const log = new Logger({ component: 'TelegramAdapter' });
 
 export interface TelegramWebhookConfig {
   url: string;
@@ -34,6 +38,11 @@ export interface TelegramAdapterMetrics {
   activeBusinessConnections: number;
 }
 
+/** How long to keep stale business connections before cleanup (24h) */
+const BUSINESS_CONNECTION_MAX_AGE = 24 * 60 * 60 * 1000;
+/** How often to run stale connection cleanup (1h) */
+const BUSINESS_CONNECTION_CLEANUP_INTERVAL = 60 * 60 * 1000;
+
 export class TelegramAdapter {
   private bot: TelegramBot | null = null;
   private messageHandler: ((msg: UniversalMessage) => Promise<void>) | null = null;
@@ -44,6 +53,7 @@ export class TelegramAdapter {
 
   // Business connection tracking: connectionId -> BusinessConnection
   private businessConnections: Map<string, BusinessConnection> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   // Metrics
   private metrics: TelegramAdapterMetrics = {
@@ -76,13 +86,14 @@ export class TelegramAdapter {
 
       const maxRetries = this.webhookConfig.maxRetries ?? 3;
       await this.setWebHookWithRetry(this.webhookConfig.url, webhookOptions, maxRetries);
-      console.log(`[TelegramAdapter] Webhook set to ${this.webhookConfig.url}`);
+      log.info('Webhook configured', { url: this.webhookConfig.url });
     } else {
       this.bot = new TelegramBot(this.token, { polling: true });
-      console.log('[TelegramAdapter] Initialized with polling.');
+      log.info('Initialized with polling');
     }
 
     this.setupListeners();
+    this.startCleanupTimer();
   }
 
   /**
@@ -102,10 +113,9 @@ export class TelegramAdapter {
           throw error;
         }
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        console.warn(
-          `[TelegramAdapter] setWebHook attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`,
-          error,
-        );
+        log.warn(`setWebHook attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms`, {
+          error: String(error),
+        });
         await new Promise((r) => setTimeout(r, delay));
       }
     }
@@ -124,34 +134,81 @@ export class TelegramAdapter {
     });
 
     // Business messages (from Telegram Business accounts)
-    this.bot.on('business_message' as any, async (msg: any) => {
+    (this.bot as any).on('business_message', async (msg: BusinessMessage) => {
+      this.metrics.businessMessages++;
+      await this.handleRawMessage(msg, true);
+    });
+
+    // Edited business messages
+    (this.bot as any).on('edited_business_message', async (msg: BusinessMessage) => {
+      log.debug('Edited business message received', {
+        chatId: String(msg.chat.id),
+        messageId: String(msg.message_id),
+        businessConnectionId: msg.business_connection_id,
+      });
+      // Treat as a new message for the orchestrator
       this.metrics.businessMessages++;
       await this.handleRawMessage(msg, true);
     });
 
     // Business connection events — track can_reply state
-    this.bot.on('business_connection' as any, (connection: any) => {
-      const bc: BusinessConnection = {
-        id: connection.id,
-        userId: connection.user?.id,
-        canReply: connection.can_reply ?? false,
-        isDeleted: connection.is_deleted ?? false,
-        updatedAt: Date.now(),
-      };
-
-      if (bc.isDeleted) {
-        this.businessConnections.delete(bc.id);
-        console.log(`[TelegramAdapter] Business connection ${bc.id} removed (deleted)`);
-      } else {
-        this.businessConnections.set(bc.id, bc);
-        console.log(
-          `[TelegramAdapter] Business connection ${bc.id}: ` +
-          `user=${bc.userId}, canReply=${bc.canReply}`,
-        );
-      }
-
-      this.metrics.activeBusinessConnections = this.countActiveBusinessConnections();
+    (this.bot as any).on('business_connection', (connection: BusinessConnectionUpdate) => {
+      this.handleBusinessConnection(connection);
     });
+  }
+
+  /**
+   * Track business connection state.
+   */
+  private handleBusinessConnection(connection: BusinessConnectionUpdate): void {
+    const bc: BusinessConnection = {
+      id: connection.id,
+      userId: connection.user?.id,
+      canReply: connection.can_reply ?? false,
+      isDeleted: connection.is_deleted ?? false,
+      updatedAt: Date.now(),
+    };
+
+    if (bc.isDeleted) {
+      this.businessConnections.delete(bc.id);
+      log.info('Business connection removed', { connectionId: bc.id, userId: bc.userId });
+    } else {
+      this.businessConnections.set(bc.id, bc);
+      log.info('Business connection updated', {
+        connectionId: bc.id,
+        userId: bc.userId,
+        canReply: bc.canReply,
+      });
+    }
+
+    this.metrics.activeBusinessConnections = this.countActiveBusinessConnections();
+  }
+
+  /**
+   * Start periodic cleanup of stale business connections.
+   */
+  private startCleanupTimer(): void {
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupStaleConnections();
+    }, BUSINESS_CONNECTION_CLEANUP_INTERVAL);
+  }
+
+  /**
+   * Remove business connections not updated in BUSINESS_CONNECTION_MAX_AGE.
+   */
+  private cleanupStaleConnections(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [id, conn] of this.businessConnections) {
+      if (now - conn.updatedAt > BUSINESS_CONNECTION_MAX_AGE) {
+        this.businessConnections.delete(id);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      log.info('Cleaned stale business connections', { count: cleaned });
+      this.metrics.activeBusinessConnections = this.countActiveBusinessConnections();
+    }
   }
 
   /**
@@ -159,7 +216,7 @@ export class TelegramAdapter {
    */
   private async handleRawMessage(msg: TelegramBot.Message, isBusiness: boolean = false): Promise<void> {
     if (!this.messageHandler) {
-      console.warn('[TelegramAdapter] Message received but no handler is set.');
+      log.warn('Message received but no handler is set');
       return;
     }
 
@@ -167,7 +224,7 @@ export class TelegramAdapter {
       const universalMessage = this.convertToUniversal(msg, isBusiness);
       await this.messageHandler(universalMessage);
     } catch (error) {
-      console.error('[TelegramAdapter] Error processing incoming message:', error);
+      log.error('Error processing incoming message', { error: String(error) });
     }
   }
 
@@ -200,7 +257,6 @@ export class TelegramAdapter {
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
     if (bufA.length !== bufB.length) {
-      // Compare against self to keep constant time, then return false
       crypto.timingSafeEqual(bufA, bufA);
       return false;
     }
@@ -211,13 +267,18 @@ export class TelegramAdapter {
    * Stop the bot and clean up.
    */
   async shutdown(): Promise<void> {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+
     if (this.bot) {
       if (this.useWebhook) {
         await this.bot.deleteWebHook();
-        console.log('[TelegramAdapter] Webhook removed. Shutdown complete.');
+        log.info('Webhook removed, shutdown complete');
       } else {
         await this.bot.stopPolling();
-        console.log('[TelegramAdapter] Polling stopped. Shutdown complete.');
+        log.info('Polling stopped, shutdown complete');
       }
     }
   }
@@ -248,12 +309,11 @@ export class TelegramAdapter {
       };
     }
 
-    // Check business connection can_reply status
     if (businessConnectionId && !this.canReplyToBusiness(businessConnectionId)) {
-      console.warn(
-        `[TelegramAdapter] Cannot reply via business connection ${businessConnectionId}: ` +
-        `connection deleted or can_reply=false`,
-      );
+      log.warn('Cannot reply via business connection', {
+        connectionId: businessConnectionId,
+        reason: 'deleted or can_reply=false',
+      });
       this.metrics.messagesFailed++;
       return {
         messageId: '',
@@ -279,7 +339,7 @@ export class TelegramAdapter {
         status: 'sent',
       };
     } catch (error) {
-      console.error('[TelegramAdapter] Error sending message:', error);
+      log.error('Error sending message', { conversationId, error: String(error) });
       this.metrics.messagesFailed++;
       return {
         messageId: '',
@@ -291,17 +351,55 @@ export class TelegramAdapter {
   }
 
   /**
+   * Send a document/file to a conversation.
+   */
+  async sendDocument(
+    conversationId: string,
+    filePath: string,
+    options?: { caption?: string; businessConnectionId?: string },
+  ): Promise<MessageSendResult> {
+    if (!this.bot) {
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    const bizId = options?.businessConnectionId;
+    if (bizId && !this.canReplyToBusiness(bizId)) {
+      log.warn('Cannot send document via business connection', { connectionId: bizId });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    try {
+      const sendOpts: Record<string, any> = {};
+      if (options?.caption) sendOpts.caption = options.caption;
+      if (bizId) sendOpts.business_connection_id = bizId;
+
+      const sentMessage = await this.bot.sendDocument(conversationId, filePath, sendOpts);
+      this.metrics.messagesSent++;
+
+      return {
+        messageId: uuidv4(),
+        platformMessageId: String(sentMessage.message_id),
+        timestamp: sentMessage.date ? sentMessage.date * 1000 : Date.now(),
+        status: 'sent',
+      };
+    } catch (error) {
+      log.error('Error sending document', { conversationId, filePath, error: String(error) });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+  }
+
+  /**
    * Send a typing indicator to the specified conversation.
    */
   async sendTypingIndicator(
     conversationId: string,
     businessConnectionId?: string,
   ): Promise<void> {
-    if (!this.bot) {
-      return;
-    }
+    if (!this.bot) return;
 
-    // Don't send typing if business connection can't reply
     if (businessConnectionId && !this.canReplyToBusiness(businessConnectionId)) {
       return;
     }
@@ -313,7 +411,7 @@ export class TelegramAdapter {
       }
       await this.bot.sendChatAction(conversationId, 'typing', options);
     } catch (error) {
-      console.error('[TelegramAdapter] Error sending typing indicator:', error);
+      log.error('Error sending typing indicator', { conversationId, error: String(error) });
     }
   }
 
@@ -323,17 +421,37 @@ export class TelegramAdapter {
    */
   canReplyToBusiness(connectionId: string): boolean {
     const conn = this.businessConnections.get(connectionId);
-    if (!conn) return true; // Unknown connection — allow (Telegram API will reject if invalid)
+    if (!conn) return true;
     return conn.canReply && !conn.isDeleted;
+  }
+
+  /**
+   * Extract businessConnectionId from a UniversalMessage.
+   * Use this instead of reaching into metadata.custom directly.
+   */
+  static extractBusinessConnectionId(message: UniversalMessage): string | undefined {
+    return message.metadata?.custom?.businessConnectionId as string | undefined;
+  }
+
+  /**
+   * Get current webhook status from Telegram API.
+   * Returns null if not in webhook mode.
+   */
+  async getWebhookInfo(): Promise<WebhookInfo | null> {
+    if (!this.bot || !this.useWebhook) return null;
+    try {
+      return await (this.bot as any).getWebHookInfo();
+    } catch (error) {
+      log.error('Error getting webhook info', { error: String(error) });
+      return null;
+    }
   }
 
   /**
    * Retrieve user info from the Telegram API.
    */
   async getUserInfo(userId: string): Promise<UserInfo | null> {
-    if (!this.bot) {
-      return null;
-    }
+    if (!this.bot) return null;
 
     try {
       const chatMember = await this.bot.getChat(userId);
@@ -361,7 +479,7 @@ export class TelegramAdapter {
         },
       };
     } catch (error) {
-      console.error('[TelegramAdapter] Error getting user info:', error);
+      log.error('Error getting user info', { userId, error: String(error) });
       return null;
     }
   }
@@ -400,30 +518,18 @@ export class TelegramAdapter {
     };
   }
 
-  /**
-   * Whether this adapter is running in webhook mode.
-   */
   isWebhookMode(): boolean {
     return this.useWebhook;
   }
 
-  /**
-   * The webhook path (for mounting on express).
-   */
   getWebhookPath(): string {
     return this.webhookConfig?.path || '/webhook/telegram';
   }
 
-  /**
-   * Return the platform type this adapter handles.
-   */
   getPlatformType(): PlatformType {
     return this.platform;
   }
 
-  /**
-   * Current adapter metrics (message counts, business connections).
-   */
   getMetrics(): TelegramAdapterMetrics {
     return { ...this.metrics };
   }
