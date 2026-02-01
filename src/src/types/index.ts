@@ -191,8 +191,9 @@ export enum LogLevel {
 
 export enum AIProvider {
   ANTHROPIC = 'anthropic',
-  OPENAI = 'openai',
-  LOCAL = 'local',
+  // Planned providers (not yet implemented):
+  // OPENAI = 'openai',
+  // LOCAL = 'local',
 }
 
 export enum NotificationChannel {
@@ -683,6 +684,13 @@ export interface PersonalityRestrictions {
 
 // --- AI Engine ---
 
+export interface AIRetryConfig {
+  maxAttempts: number;
+  requestTimeoutMs: number;
+  delayBetweenRetriesMs: number;
+  stallingMessages: string[];
+}
+
 export interface AIEngineConfig {
   provider: AIProvider;
   model: string;
@@ -694,6 +702,7 @@ export interface AIEngineConfig {
   systemPrompt: string;
   cacheEnabled: boolean;
   cacheTTL?: number;
+  retry?: AIRetryConfig;
   metadata?: Record<string, unknown>;
 }
 

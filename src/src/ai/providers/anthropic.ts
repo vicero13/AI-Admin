@@ -32,7 +32,7 @@ export class AnthropicProvider {
   async generateResponse(
     systemPrompt: string,
     messages: Array<{ role: string; content: string }>,
-    options?: { temperature?: number; maxTokens?: number; topP?: number }
+    options?: { temperature?: number; maxTokens?: number; topP?: number; timeoutMs?: number }
   ): Promise<ProviderResponse> {
     try {
       const anthropicMessages = messages.map((msg) => ({
@@ -40,7 +40,7 @@ export class AnthropicProvider {
         content: msg.content,
       }));
 
-      const response = await this.client.messages.create({
+      const createParams = {
         model: this.model,
         max_tokens: options?.maxTokens ?? this.defaultMaxTokens,
         temperature: options?.temperature ?? this.defaultTemperature,
@@ -49,7 +49,21 @@ export class AnthropicProvider {
           : {}),
         system: systemPrompt,
         messages: anthropicMessages,
-      });
+      };
+
+      let responsePromise = this.client.messages.create(createParams);
+
+      // Apply timeout if specified
+      if (options?.timeoutMs && options.timeoutMs > 0) {
+        responsePromise = Promise.race([
+          responsePromise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`AI request timed out after ${options.timeoutMs}ms`)), options.timeoutMs)
+          ),
+        ]) as typeof responsePromise;
+      }
+
+      const response = await responsePromise;
 
       const textContent = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')

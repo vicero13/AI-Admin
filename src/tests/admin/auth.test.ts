@@ -56,7 +56,20 @@ describe('Auth', () => {
     expect(decoded.role).toBe('admin');
   });
 
-  test('createLoginHandler returns 400 without password', async () => {
+  test('validateLogin middleware returns 400 without password', async () => {
+    const { validateLogin } = require('../../src/admin/auth');
+    const req = { body: {} } as any;
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as any;
+    const next = jest.fn();
+    validateLogin(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('createLoginHandler returns 401 without password (no middleware)', async () => {
     const { createLoginHandler } = require('../../src/admin/auth');
     const handler = createLoginHandler(configPath);
     const req = { body: {} } as any;
@@ -65,7 +78,7 @@ describe('Auth', () => {
       json: jest.fn(),
     } as any;
     handler(req, res);
-    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 
   test('createAuthMiddleware blocks requests without token', () => {

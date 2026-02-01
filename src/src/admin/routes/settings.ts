@@ -1,11 +1,21 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import * as configService from '../services/config-service';
+import { validateParams } from '../validation';
 import type { AdminDependencies } from '../index';
 
 const VALID_SECTIONS = [
   'server', 'ai', 'personality', 'situationDetection', 'handoff',
   'telegram', 'redis', 'database', 'logging', 'admin', 'knowledgeBasePath', 'resources',
-];
+] as const;
+
+const sectionParamSchema = z.object({
+  section: z.enum(VALID_SECTIONS, {
+    message: `Invalid section. Valid: ${VALID_SECTIONS.join(', ')}`,
+  }),
+});
+
+const validateSection = validateParams(sectionParamSchema);
 
 export function createSettingsRouter(deps: AdminDependencies): Router {
   const router = Router();
@@ -35,13 +45,10 @@ export function createSettingsRouter(deps: AdminDependencies): Router {
     }
   });
 
-  // Update specific section
-  router.put('/:section', (req: Request, res: Response) => {
+  // Update specific section (validated)
+  router.put('/:section', validateSection, (req: Request, res: Response) => {
     try {
       const { section } = req.params;
-      if (!VALID_SECTIONS.includes(section)) {
-        return res.status(400).json({ error: `Invalid section: ${section}` });
-      }
       configService.writeSection(cp, section, req.body);
       res.json({
         success: true,

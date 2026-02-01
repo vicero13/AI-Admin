@@ -3,6 +3,7 @@
 // ============================================================
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 
 import {
@@ -92,33 +93,33 @@ export class KnowledgeBase {
   async reload(): Promise<void> {
     this.loadErrors = [];
 
-    this.businessInfo = this.loadJsonFile<BusinessInfo>(
+    this.businessInfo = await this.loadJsonFile<BusinessInfo>(
       path.join(this.config.basePath, 'business-info.json'),
     );
 
-    this.teamInfo = this.loadJsonFile<Record<string, unknown>>(
+    this.teamInfo = await this.loadJsonFile<Record<string, unknown>>(
       path.join(this.config.basePath, 'team.json'),
     );
 
-    this.metadata = this.loadJsonFile<Record<string, unknown>>(
+    this.metadata = await this.loadJsonFile<Record<string, unknown>>(
       path.join(this.config.basePath, 'metadata.json'),
     );
 
-    this.services = this.loadJsonFile<ServiceInfo[]>(
+    this.services = (await this.loadJsonFile<ServiceInfo[]>(
       path.join(this.config.basePath, 'services.json'),
-    ) ?? [];
+    )) ?? [];
 
-    this.faq = this.loadJsonFilesFromDir<FAQItem[]>(
+    this.faq = (await this.loadJsonFilesFromDir<FAQItem[]>(
       path.join(this.config.basePath, 'faq'),
-    ).flat();
+    )).flat();
 
-    this.policies = this.loadJsonFilesFromDir<Policy[]>(
+    this.policies = (await this.loadJsonFilesFromDir<Policy[]>(
       path.join(this.config.basePath, 'policies'),
-    ).flat();
+    )).flat();
 
-    this.dialogExamples = this.loadJsonFilesFromDir<DialogExample[]>(
+    this.dialogExamples = (await this.loadJsonFilesFromDir<DialogExample[]>(
       path.join(this.config.basePath, 'dialogs'),
-    ).flat();
+    )).flat();
 
     this.knowledgeItems = this.buildKnowledgeItems();
     this.lastLoadedAt = Date.now();
@@ -247,47 +248,49 @@ export class KnowledgeBase {
 
   // --- Private: File Loading ---
 
-  private loadJsonFile<T>(filePath: string): T | null {
+  private async loadJsonFile<T>(filePath: string): Promise<T | null> {
     try {
-      if (!fs.existsSync(filePath)) {
-        this.loadErrors.push(`File not found: ${filePath}`);
-        return null;
-      }
-      const raw = fs.readFileSync(filePath, 'utf-8');
+      await fsp.access(filePath);
+      const raw = await fsp.readFile(filePath, 'utf-8');
       return JSON.parse(raw) as T;
-    } catch (err) {
-      this.loadErrors.push(`Error loading ${filePath}: ${String(err)}`);
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        this.loadErrors.push(`File not found: ${filePath}`);
+      } else {
+        this.loadErrors.push(`Error loading ${filePath}: ${String(err)}`);
+      }
       return null;
     }
   }
 
-  private loadJsonFilesFromDir<T>(dirPath: string): T[] {
+  private async loadJsonFilesFromDir<T>(dirPath: string): Promise<T[]> {
     const results: T[] = [];
     try {
-      if (!fs.existsSync(dirPath)) {
-        this.loadErrors.push(`Directory not found: ${dirPath}`);
-        return results;
-      }
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      await fsp.access(dirPath);
+      const entries = await fsp.readdir(dirPath, { withFileTypes: true });
       for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
-          const subFiles = fs.readdirSync(fullPath).filter((f) => f.endsWith('.json'));
+          const subFiles = (await fsp.readdir(fullPath)).filter((f) => f.endsWith('.json'));
           for (const file of subFiles) {
-            const data = this.loadJsonFile<T>(path.join(fullPath, file));
+            const data = await this.loadJsonFile<T>(path.join(fullPath, file));
             if (data !== null) {
               results.push(data);
             }
           }
         } else if (entry.name.endsWith('.json')) {
-          const data = this.loadJsonFile<T>(fullPath);
+          const data = await this.loadJsonFile<T>(fullPath);
           if (data !== null) {
             results.push(data);
           }
         }
       }
-    } catch (err) {
-      this.loadErrors.push(`Error reading directory ${dirPath}: ${String(err)}`);
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        this.loadErrors.push(`Directory not found: ${dirPath}`);
+      } else {
+        this.loadErrors.push(`Error reading directory ${dirPath}: ${String(err)}`);
+      }
     }
     return results;
   }

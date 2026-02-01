@@ -3,6 +3,8 @@
 // ============================================================
 
 import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -204,7 +206,10 @@ async function main() {
   }
 
   // Context Manager
-  const contextManager = new ContextManager();
+  const contextManager = new ContextManager({
+    sessionExpiryHours: config.context?.sessionExpiryHours,
+    maxHistoryLength: config.context?.maxHistoryLength,
+  });
   console.log('[Init] ✅ Context Manager');
 
   // Situation Detector
@@ -478,7 +483,23 @@ async function main() {
 
   // 8. HTTP сервер (healthcheck + метрики)
   const app = express();
+
+  // CORS
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+    : [`http://localhost:${port}`, 'http://localhost:4000'];
+  app.use(cors({ origin: allowedOrigins, credentials: true }));
+
   app.use(express.json());
+
+  // Rate limiting for admin API
+  const adminApiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 100,
+    message: { error: 'Too many requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
 
   // Webhook endpoint for Telegram (if webhook mode)
   if (telegramAdapter.isWebhookMode()) {
@@ -492,6 +513,7 @@ async function main() {
     const webhookInfo = await telegramAdapter.getWebhookInfo();
     res.json({
       status: 'ok',
+      uptime: process.uptime(),
       timestamp: Date.now(),
       mode,
       ...metrics,
@@ -500,6 +522,15 @@ async function main() {
         ...(webhookInfo ? { webhook: webhookInfo } : {}),
       },
     });
+  });
+
+  app.get('/ready', (_req, res) => {
+    const metrics = orchestrator.getMetrics();
+    if (metrics.running) {
+      res.json({ status: 'ready' });
+    } else {
+      res.status(503).json({ status: 'not_ready' });
+    }
   });
 
   app.get('/metrics', async (_req, res) => {
