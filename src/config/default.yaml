@@ -8,6 +8,13 @@ ai:
   maxTokens: 500
   cacheEnabled: true
   cacheTTL: 1800
+  retry:
+    maxAttempts: 2
+    requestTimeoutMs: 30000
+    delayBetweenRetriesMs: 60000
+    stallingMessages:
+      - "Секунду, уточняю информацию..."
+      - "Сейчас подключу коллегу, который больше разбирается в вопросе"
 personality:
   name: Валерия
   role: менеджер коворкинга ElasticSpace
@@ -134,8 +141,9 @@ logging:
   level: info
 admin:
   enabled: true
-  password: admin123
-  jwtSecret: change-me-in-production
+  # password and jwtSecret MUST be set via environment variables:
+  #   ADMIN_PASSWORD - admin panel password
+  #   ADMIN_JWT_SECRET - JWT signing secret
   tokenExpiry: 24h
 
 # === Бизнес-логика v2.0 ===
@@ -177,6 +185,10 @@ workingHours:
       start: "10:00"
       end: "18:00"
       enabled: false
+
+context:
+  sessionExpiryHours: 24
+  maxHistoryLength: 20
 
 conversation:
   enabled: true

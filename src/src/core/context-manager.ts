@@ -10,16 +10,25 @@ import {
 } from '../types';
 import { Logger } from '../utils/logger';
 
-const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-const MAX_HISTORY_LENGTH = 20;
+export interface ContextManagerConfig {
+  sessionExpiryHours?: number;
+  maxHistoryLength?: number;
+}
+
+const DEFAULT_SESSION_EXPIRY_HOURS = 24;
+const DEFAULT_MAX_HISTORY_LENGTH = 20;
 
 export class ContextManager {
   private contexts: Map<string, ConversationContext> = new Map();
   private clientProfiles: Map<string, ClientProfile> = new Map();
   private logger: Logger;
+  private sessionExpiryMs: number;
+  private maxHistoryLength: number;
 
-  constructor() {
+  constructor(config: ContextManagerConfig = {}) {
     this.logger = new Logger({ component: 'ContextManager' });
+    this.sessionExpiryMs = (config.sessionExpiryHours ?? DEFAULT_SESSION_EXPIRY_HOURS) * 60 * 60 * 1000;
+    this.maxHistoryLength = config.maxHistoryLength ?? DEFAULT_MAX_HISTORY_LENGTH;
   }
 
   /**
@@ -38,7 +47,7 @@ export class ContextManager {
       platform,
       sessionStarted: now,
       lastActivity: now,
-      expiresAt: now + TWENTY_FOUR_HOURS_MS,
+      expiresAt: now + this.sessionExpiryMs,
       clientType: ClientType.NEW,
       messageHistory: [],
       emotionalState: EmotionalState.NEUTRAL,
@@ -120,9 +129,9 @@ export class ContextManager {
 
     context.messageHistory.push(message);
 
-    if (context.messageHistory.length > MAX_HISTORY_LENGTH) {
+    if (context.messageHistory.length > this.maxHistoryLength) {
       context.messageHistory = context.messageHistory.slice(
-        -MAX_HISTORY_LENGTH,
+        -this.maxHistoryLength,
       );
     }
 

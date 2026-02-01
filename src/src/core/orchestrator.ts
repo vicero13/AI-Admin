@@ -29,6 +29,7 @@ import {
   Timestamp,
 } from '../types';
 
+import { Logger } from '../utils/logger';
 import { ContextManager } from './context-manager';
 import { SituationDetector } from './situation-detector';
 import { HumanMimicry } from './human-mimicry';
@@ -106,6 +107,7 @@ export class Orchestrator {
   private knowledgeBase: KnowledgeBase;
   private resourceManager?: ResourceManager;
   private config: OrchestratorConfig;
+  private logger: Logger;
   private running = false;
 
   // Business logic services
@@ -121,6 +123,7 @@ export class Orchestrator {
 
   constructor(config: OrchestratorConfig, deps: OrchestratorDeps) {
     this.config = config;
+    this.logger = new Logger({ component: 'Orchestrator' });
     this.contextManager = deps.contextManager;
     this.situationDetector = deps.situationDetector;
     this.humanMimicry = deps.humanMimicry;
@@ -142,7 +145,7 @@ export class Orchestrator {
 
   async start(): Promise<void> {
     this.running = true;
-    console.log('[Orchestrator] Запущен');
+    this.logger.info('Orchestrator started');
   }
 
   async stop(): Promise<void> {
@@ -150,7 +153,7 @@ export class Orchestrator {
     if (this.followUpService) {
       this.followUpService.destroy();
     }
-    console.log('[Orchestrator] Остановлен');
+    this.logger.info('Orchestrator stopped');
   }
 
   /**
@@ -161,7 +164,7 @@ export class Orchestrator {
     message: UniversalMessage
   ): Promise<OrchestratorResponse | null> {
     if (!this.running) {
-      console.warn('[Orchestrator] Получено сообщение, но оркестратор не запущен');
+      this.logger.warn('Message received but orchestrator is not running');
       return null;
     }
 
@@ -223,7 +226,7 @@ export class Orchestrator {
 
       // 3. Проверить режим — если human mode, не отвечаем
       if (context.mode === ConversationMode.HUMAN) {
-        console.log(`[Orchestrator] Диалог ${conversationId} в режиме HUMAN, пропускаем`);
+        this.logger.debug(`Conversation ${conversationId} is in HUMAN mode, skipping`);
         await this.contextManager.addMessage(conversationId, {
           messageId: message.messageId,
           timestamp: message.timestamp,
@@ -341,7 +344,7 @@ export class Orchestrator {
           updatedContext
         );
         if (this.contactQualifier.shouldIgnore(contactType)) {
-          console.log(`[Orchestrator] Спам от ${conversationId}, игнорируем`);
+          this.logger.info(`Spam detected from ${conversationId}, ignoring`);
           return null;
         }
       }
@@ -448,7 +451,7 @@ export class Orchestrator {
         }
       }
 
-      // 14. Сгенерировать ответ через AI
+      // 14. Сгенерировать ответ через AI (с retry + stalling + handoff)
       const additionalInstructions: string[] = [];
       if (mediaContext) {
         additionalInstructions.push(
@@ -466,12 +469,87 @@ export class Orchestrator {
         }
       }
 
-      const aiResponse = await this.aiEngine.generateHumanLikeResponse(
-        text,
-        updatedContext,
-        relevantItems,
-        this.config.personality
-      );
+      const retryConfig = this.config.aiEngine.retry;
+      const maxAttempts = retryConfig?.maxAttempts ?? 1;
+
+      let aiResponse: HumanLikeResponse | null = null;
+      let lastError: Error | null = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          aiResponse = await this.aiEngine.generateHumanLikeResponse(
+            text,
+            updatedContext,
+            relevantItems,
+            this.config.personality
+          );
+          lastError = null;
+          break; // Success — exit retry loop
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          this.logger.warn(`AI attempt ${attempt}/${maxAttempts} failed`, {
+            error: lastError.message,
+            conversationId,
+            attempt,
+          });
+
+          if (attempt < maxAttempts) {
+            // Send stalling message to client and wait before retrying
+            const stallingMessages = retryConfig?.stallingMessages ?? [];
+            const stallingText = stallingMessages[attempt - 1]
+              ?? stallingMessages[0]
+              ?? 'Секунду, уточняю информацию...';
+
+            await this.contextManager.addMessage(conversationId, {
+              messageId: `ai-stall-retry-${Date.now()}`,
+              timestamp: Date.now(),
+              role: MessageRole.ASSISTANT,
+              content: stallingText,
+              handledBy: MessageHandler.AI,
+            });
+
+            const delayMs = retryConfig?.delayBetweenRetriesMs ?? 60000;
+
+            // Return stalling message immediately; schedule retry as continuation
+            // We use a Promise-based delay to wait before the next attempt
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+      }
+
+      // All attempts failed — handoff to human
+      if (!aiResponse || lastError) {
+        const handoffStallingMessages = retryConfig?.stallingMessages ?? [];
+        const handoffText = handoffStallingMessages.length > 1
+          ? handoffStallingMessages[handoffStallingMessages.length - 1]
+          : 'Сейчас подключу коллегу, который больше разбирается в вопросе';
+
+        const handoffReason: HandoffReason = {
+          type: HandoffReasonType.TECHNICAL_ISSUE,
+          description: `AI не ответил после ${maxAttempts} попыток: ${lastError?.message ?? 'unknown'}`,
+          severity: RiskLevel.HIGH,
+          detectedBy: 'orchestrator_retry',
+        };
+
+        await this.handoffSystem.initiateHandoff(conversationId, handoffReason, updatedContext);
+        await this.contextManager.updateContext(conversationId, {
+          mode: ConversationMode.HUMAN,
+          requiresHandoff: true,
+        });
+
+        await this.contextManager.addMessage(conversationId, {
+          messageId: `ai-handoff-retry-${Date.now()}`,
+          timestamp: Date.now(),
+          role: MessageRole.ASSISTANT,
+          content: handoffText,
+          handledBy: MessageHandler.AI,
+        });
+
+        return {
+          responseText: handoffText,
+          typingDelay: this.humanMimicry.calculateTypingDelay(handoffText),
+        };
+      }
 
       // 15. Проверить ответ — если AI не уверен, передать менеджеру
       if (aiResponse.requiresHandoff && aiResponse.handoffReason) {
@@ -496,9 +574,7 @@ export class Orchestrator {
       // 17. Проверить на роботичность
       const roboticScore = this.humanMimicry.checkRoboticness(responseText);
       if (roboticScore.score > 70) {
-        console.warn(
-          `[Orchestrator] Ответ слишком роботичный (score: ${roboticScore.score}), пробуем улучшить`
-        );
+        this.logger.warn(`Response too robotic (score: ${roboticScore.score}), improving`);
         responseText = await this.humanMimicry.applyPersonality(
           responseText,
           this.config.personality
@@ -513,13 +589,13 @@ export class Orchestrator {
             const summary = await this.summaryService.generateSummary(updatedContext);
             summary.viewingConfirmed = true;
             await this.summaryService.notifyAdmin(summary);
-            console.log(`[Orchestrator] Просмотр подтверждён для ${conversationId}, уведомление отправлено`);
+            this.logger.info(`Viewing confirmed for ${conversationId}, notification sent`);
             // Устанавливаем контекст для follow-up
             if (this.followUpService?.isEnabled()) {
               this.followUpService.setFollowUpContext(conversationId, 'viewing_time');
             }
           } catch (err) {
-            console.error('[Orchestrator] Ошибка создания резюме:', err);
+            this.logger.error('Error creating summary', { error: String(err), conversationId, stack: (err as Error)?.stack });
           }
         }
       }
@@ -546,7 +622,7 @@ export class Orchestrator {
 
       return { responseText, typingDelay, attachment };
     } catch (error) {
-      console.error('[Orchestrator] Ошибка обработки сообщения:', error);
+      this.logger.error('Error processing message', { error: String(error), conversationId, stack: (error as Error)?.stack });
 
       const fallbackReason: HandoffReason = {
         type: HandoffReasonType.TECHNICAL_ISSUE,
@@ -643,7 +719,7 @@ export class Orchestrator {
       mode: ConversationMode.AI,
       requiresHandoff: false,
     });
-    console.log(`[Orchestrator] Диалог ${conversationId} переключён в AI mode`);
+    this.logger.info(`Conversation ${conversationId} switched to AI mode`);
   }
 
   isHumanMode(conversationId: string): boolean {

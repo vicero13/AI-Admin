@@ -78,6 +78,7 @@ export class AIEngine {
           temperature: request.parameters?.temperature ?? this.config.temperature,
           maxTokens: request.parameters?.maxTokens ?? this.config.maxTokens,
           topP: request.parameters?.topP ?? this.config.topP,
+          timeoutMs: this.config.retry?.requestTimeoutMs,
         }
       );
 
@@ -196,6 +197,7 @@ export class AIEngine {
         {
           temperature: this.config.temperature,
           maxTokens: this.config.maxTokens,
+          timeoutMs: this.config.retry?.requestTimeoutMs,
         }
       );
 
@@ -263,6 +265,12 @@ export class AIEngine {
         },
       };
     } catch (error: unknown) {
+      // If retry is configured, let the error propagate to the Orchestrator
+      // so it can handle the retry + stalling + handoff flow
+      if (this.config.retry && this.config.retry.maxAttempts > 1) {
+        throw error;
+      }
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
         text: 'Секундочку, уточню информацию и вернусь к вам.',
