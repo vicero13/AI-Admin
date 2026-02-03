@@ -18,6 +18,8 @@ export interface AdminDependencies {
   configPath: string;
   knowledgeBasePath: string;
   anthropicApiKey: string;
+  openaiApiKey?: string;
+  aiProvider?: string;
 }
 
 // Rate limiter for login endpoint (strict)

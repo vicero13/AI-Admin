@@ -14,7 +14,15 @@ export interface ProviderResponse {
   finishReason: string;
 }
 
-export class AnthropicProvider {
+export interface AIProviderInterface {
+  generateResponse(
+    systemPrompt: string,
+    messages: Array<{ role: string; content: string }>,
+    options?: { temperature?: number; maxTokens?: number; topP?: number; timeoutMs?: number }
+  ): Promise<ProviderResponse>;
+}
+
+export class AnthropicProvider implements AIProviderInterface {
   private client: Anthropic;
   private model: string;
   private defaultMaxTokens: number;

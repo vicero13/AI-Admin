@@ -11,7 +11,8 @@ describe('ConversationDetector', () => {
 
   const makeContext = (
     messageCount: number = 0,
-    lastActivity?: number
+    lastActivity?: number,
+    includeAssistant: boolean = true
   ): ConversationContext => ({
     conversationId: 'test-conv-1',
     userId: 'user-1',
@@ -23,7 +24,7 @@ describe('ConversationDetector', () => {
     messageHistory: Array.from({ length: messageCount }, (_, i) => ({
       messageId: `msg-${i}`,
       timestamp: Date.now(),
-      role: 'user' as any,
+      role: (includeAssistant && i % 2 === 1 ? 'assistant' : 'user') as any,
       content: `message ${i}`,
       handledBy: 'ai' as any,
     })),
@@ -93,6 +94,54 @@ describe('ConversationDetector', () => {
     detector.resetConversation('conv-1');
     // After reset, no previous message_id stored, so no chat-cleared detection
     expect(detector.detectStatus('conv-1', ctx, 5)).toBe('continuation');
+  });
+
+  test('detects new_contact when history has only user messages (no assistant)', () => {
+    const detector = new ConversationDetector(defaultConfig);
+    const ctx = makeContext(5, Date.now() - 1000, false); // 5 user messages, no assistant
+    expect(detector.detectStatus('conv-1', ctx)).toBe('new_contact');
+  });
+
+  test('detects chat cleared after server restart (low message_id heuristic)', () => {
+    const detector = new ConversationDetector(defaultConfig);
+    const ctx = makeContext(10, Date.now() - 1000); // 10 messages with assistant replies
+
+    // No previous message_id stored (simulates server restart),
+    // but message_id=1 with 10 messages in history → chat was cleared
+    expect(detector.detectStatus('conv-1', ctx, 1)).toBe('new_conversation');
+  });
+
+  test('does not false-positive chat cleared for normal low message_id', () => {
+    const detector = new ConversationDetector(defaultConfig);
+    const ctx = makeContext(2, Date.now() - 1000); // only 2 messages (short history)
+
+    // Short history + low message_id is normal for a new conversation
+    expect(detector.detectStatus('conv-1', ctx, 2)).toBe('continuation');
+  });
+
+  test('does not duplicate greeting after markGreetingSent', () => {
+    const detector = new ConversationDetector(defaultConfig);
+    const ctx = makeContext(0);
+
+    // First message → new_contact
+    expect(detector.detectStatus('conv-1', ctx)).toBe('new_contact');
+
+    // Mark greeting as sent
+    detector.markGreetingSent('conv-1');
+
+    // Second message before bot replies → should be continuation, not new_contact
+    expect(detector.detectStatus('conv-1', ctx)).toBe('continuation');
+  });
+
+  test('resetConversation clears greetingSent flag', () => {
+    const detector = new ConversationDetector(defaultConfig);
+    const ctx = makeContext(0);
+
+    detector.markGreetingSent('conv-1');
+    expect(detector.detectStatus('conv-1', ctx)).toBe('continuation');
+
+    detector.resetConversation('conv-1');
+    expect(detector.detectStatus('conv-1', ctx)).toBe('new_contact');
   });
 
   test('isEnabled returns correct value', () => {

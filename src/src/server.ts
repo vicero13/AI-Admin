@@ -69,6 +69,9 @@ async function main() {
 
   const telegramToken = process.env.TELEGRAM_TOKEN || config.telegram?.token;
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const aiProvider = config.ai?.provider || 'anthropic';
+  const aiApiKey = aiProvider === 'openai' ? openaiApiKey : anthropicApiKey;
   const adminTelegramId = process.env.ADMIN_TELEGRAM_ID;
   const port = Number(process.env.PORT) || config.server?.port || 3000;
 
@@ -77,8 +80,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (!anthropicApiKey) {
-    console.error('[FATAL] ANTHROPIC_API_KEY не задан. Установите переменную окружения.');
+  if (!aiApiKey) {
+    const envVar = aiProvider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+    console.error(`[FATAL] ${envVar} не задан. Установите переменную окружения.`);
     process.exit(1);
   }
 
@@ -221,10 +225,10 @@ async function main() {
   console.log('[Init] ✅ Human Mimicry');
 
   // AI Engine
-  aiEngineConfig.metadata = { apiKey: anthropicApiKey };
+  aiEngineConfig.metadata = { apiKey: aiApiKey };
   const aiEngine = new AIEngine(aiEngineConfig);
   aiEngine.initialize();
-  console.log('[Init] ✅ AI Engine (Anthropic)');
+  console.log(`[Init] ✅ AI Engine (${aiProvider}, model: ${aiEngineConfig.model})`);
 
   // Telegram Adapter для уведомлений менеджеру
   let notifyManager: (message: string, priority: string) => Promise<void>;
@@ -571,7 +575,9 @@ async function main() {
       orchestrator,
       configPath: path.resolve(__dirname, '../config/default.yaml'),
       knowledgeBasePath,
-      anthropicApiKey,
+      anthropicApiKey: anthropicApiKey || '',
+      openaiApiKey: openaiApiKey || '',
+      aiProvider: aiProvider,
     });
     app.use('/', adminRouter);
     console.log('[Init] ✅ Admin panel enabled');

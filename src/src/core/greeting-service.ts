@@ -7,11 +7,13 @@ import { ConversationContext } from '../types';
 
 export interface GreetingConfig {
   enabled: boolean;
-  template: string;               // "Здравствуйте, {name}! {{emoji}} Меня зовут Валерия..."
-  shortTemplate: string;          // "Добрый день! {{emoji}}"
+  template: string;               // "Добрый день, {name}!\nЭто Валерия, администратор..."
+  templateNoName?: string;        // "Добрый день!\nЭто Валерия, администратор..."
+  shortTemplate: string;          // "Добрый день, {name}!"
+  shortTemplateNoName?: string;   // "Добрый день!"
   useAI: boolean;                 // Генерировать через AI или использовать шаблон
   agentName: string;              // Имя агента для подстановки
-  emojis: string[];               // ["😊", "🤗", "👋", "✨", "💫"]
+  emojis: string[];               // ["🐱", "😊", "🌸", "💚", "🤗"]
 }
 
 export type GreetingType = 'full' | 'short' | 'none';
@@ -59,7 +61,10 @@ export class GreetingService {
 
     // Short greeting — только короткий шаблон
     if (type === 'short') {
-      return this.applyTemplate(this.config.shortTemplate || 'Добрый день! {{emoji}}', cleanName);
+      const shortTpl = cleanName
+        ? (this.config.shortTemplate || 'Добрый день, {name}!')
+        : (this.config.shortTemplateNoName || this.config.shortTemplate || 'Добрый день!');
+      return this.applyTemplate(shortTpl, cleanName);
     }
 
     // Full greeting — AI или шаблон
@@ -79,8 +84,11 @@ export class GreetingService {
       }
     }
 
-    // Шаблонное приветствие
-    return this.applyTemplate(this.config.template, cleanName);
+    // Шаблонное приветствие — с именем или без
+    const fullTpl = cleanName
+      ? this.config.template
+      : (this.config.templateNoName || this.config.template);
+    return this.applyTemplate(fullTpl, cleanName);
   }
 
   /**
@@ -154,7 +162,7 @@ export class GreetingService {
 
   private buildGreetingSystemPrompt(name: string | null): string {
     return [
-      `Ты — ${this.config.agentName}, менеджер коворкинга ElasticSpace.`,
+      `Ты — ${this.config.agentName}, администратор коворкинга ElasticSpace.`,
       'Ты настоящий живой человек, сотрудник компании.',
       'Напиши короткое приветственное сообщение (1-2 предложения).',
       'Используй формальное обращение на "Вы".',

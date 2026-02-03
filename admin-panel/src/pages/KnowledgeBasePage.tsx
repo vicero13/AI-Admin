@@ -4,8 +4,10 @@ import ServicesEditor from '../components/knowledge/ServicesEditor';
 import TeamEditor from '../components/knowledge/TeamEditor';
 import FAQEditor from '../components/knowledge/FAQEditor';
 import PolicyEditor from '../components/knowledge/PolicyEditor';
+import KnowledgeChat from '../components/knowledge/KnowledgeChat';
 
 const tabs = [
+  { key: 'chat', label: 'AI Chat' },
   { key: 'business', label: 'Business Info' },
   { key: 'services', label: 'Services' },
   { key: 'team', label: 'Team' },
@@ -14,7 +16,7 @@ const tabs = [
 ];
 
 export default function KnowledgeBasePage() {
-  const [tab, setTab] = useState('business');
+  const [tab, setTab] = useState('chat');
 
   return (
     <div className="max-w-4xl">
@@ -36,6 +38,7 @@ export default function KnowledgeBasePage() {
         ))}
       </div>
 
+      {tab === 'chat' && <KnowledgeChat />}
       {tab === 'business' && <BusinessInfoEditor />}
       {tab === 'services' && <ServicesEditor />}
       {tab === 'team' && <TeamEditor />}

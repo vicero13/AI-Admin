@@ -1,11 +1,17 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load env vars from main project's .env file
+dotenv.config({ path: path.resolve(__dirname, '../../../src/.env') });
+
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import rateLimit from 'express-rate-limit';
 import configRoutes from './routes/config';
 import knowledgeRoutes from './routes/knowledge-base';
 import dialogRoutes from './routes/dialogs';
 import statusRoutes from './routes/status';
+import knowledgeChatRoutes from './routes/knowledge-chat';
 
 const app = express();
 const PORT = parseInt(process.env.ADMIN_PORT || '4000', 10);
@@ -41,7 +47,9 @@ app.get('/ready', (_req, res) => {
 });
 
 // API routes (rate-limited)
+// NOTE: /api/knowledge/chat MUST be before /api/knowledge to avoid route conflicts
 app.use('/api/config', apiLimiter, configRoutes);
+app.use('/api/knowledge/chat', apiLimiter, knowledgeChatRoutes);
 app.use('/api/knowledge', apiLimiter, knowledgeRoutes);
 app.use('/api/dialogs', apiLimiter, dialogRoutes);
 app.use('/api/status', apiLimiter, statusRoutes);
