@@ -486,7 +486,12 @@ export class SituationDetector {
     let knowledgeBaseMatch = 0.5; // default mid-level
 
     // Common easily answerable topics boost knowledge match
-    const easyTopics = ['цена', 'стоимость', 'адрес', 'график', 'режим работы', 'как добраться', 'телефон', 'контакт'];
+    const easyTopics = [
+      'цена', 'стоимость', 'адрес', 'график', 'режим работы', 'как добраться', 'телефон', 'контакт',
+      'офис', 'кабинет', 'переговорн', 'коворкинг', 'аренд', 'человек', 'рабочее место',
+      'просмотр', 'бронир', 'парковка', 'метро', 'интернет', 'кухня',
+      'привет', 'здравствуй', 'добрый день', 'добрый вечер', 'доброе утро',
+    ];
     for (const topic of easyTopics) {
       if (lower.includes(topic)) {
         knowledgeBaseMatch = 0.85;

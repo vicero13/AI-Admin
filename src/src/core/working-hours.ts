@@ -64,6 +64,10 @@ export class WorkingHoursService {
       if (!daySchedule.enabled) return false;
       const startMinutes = this.parseTime(daySchedule.start);
       const endMinutes = this.parseTime(daySchedule.end);
+      // Если end <= start — значит рабочее время переходит через полночь (например 09:00–00:00)
+      if (endMinutes <= startMinutes) {
+        return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+      }
       return currentMinutes >= startMinutes && currentMinutes < endMinutes;
     }
 
@@ -75,6 +79,9 @@ export class WorkingHoursService {
       if (this.config.weekends?.start && this.config.weekends?.end) {
         const weekendStart = this.parseTime(this.config.weekends.start);
         const weekendEnd = this.parseTime(this.config.weekends.end);
+        if (weekendEnd <= weekendStart) {
+          return currentMinutes >= weekendStart || currentMinutes < weekendEnd;
+        }
         return currentMinutes >= weekendStart && currentMinutes < weekendEnd;
       }
     }
@@ -83,6 +90,9 @@ export class WorkingHoursService {
     const startMinutes = this.parseTime(this.config.start);
     const endMinutes = this.parseTime(this.config.end);
 
+    if (endMinutes <= startMinutes) {
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
     return currentMinutes >= startMinutes && currentMinutes < endMinutes;
   }
 

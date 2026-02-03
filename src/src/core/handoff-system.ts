@@ -102,14 +102,14 @@ export class HandoffSystem {
 
   generateStallingMessage(reason: HandoffReason): string {
     const reasonMessages: Record<string, string> = {
-      [HandoffReasonType.AI_PROBING]: 'Минуточку, уточню информацию...',
-      [HandoffReasonType.COMPLEX_QUERY]: 'Интересный вопрос! Дай минутку, проверю варианты...',
-      [HandoffReasonType.EMOTIONAL_ESCALATION]: 'Понимаю, сейчас разберусь в ситуации...',
-      [HandoffReasonType.LOW_CONFIDENCE]: 'Секундочку, уточню детали...',
-      [HandoffReasonType.SPECIAL_REQUEST]: 'Момент, уточню возможности...',
-      [HandoffReasonType.OUT_OF_SCOPE]: 'Хороший вопрос! Дай минутку, узнаю...',
-      [HandoffReasonType.TECHNICAL_ISSUE]: 'Секунду, проверю техническую информацию...',
-      [HandoffReasonType.MANUAL_REQUEST]: 'Конечно, сейчас подключу специалиста...',
+      [HandoffReasonType.AI_PROBING]: 'Минуточку, уточню информацию',
+      [HandoffReasonType.COMPLEX_QUERY]: 'Интересный вопрос! Дай минутку, проверю варианты',
+      [HandoffReasonType.EMOTIONAL_ESCALATION]: 'Понимаю, сейчас разберусь в ситуации',
+      [HandoffReasonType.LOW_CONFIDENCE]: 'Секундочку, уточню детали',
+      [HandoffReasonType.SPECIAL_REQUEST]: 'Момент, уточню возможности',
+      [HandoffReasonType.OUT_OF_SCOPE]: 'Хороший вопрос! Дай минутку, узнаю',
+      [HandoffReasonType.TECHNICAL_ISSUE]: 'Секунду, проверю техническую информацию',
+      [HandoffReasonType.MANUAL_REQUEST]: 'Конечно, сейчас подключу специалиста',
     };
 
     const specificMessage = reasonMessages[reason.type];

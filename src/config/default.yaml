@@ -2,19 +2,12 @@ server:
   port: 3000
   host: 0.0.0.0
 ai:
-  provider: anthropic
-  model: claude-3-sonnet-20240229
+  provider: openai
+  model: gpt-5.2
   temperature: 0.7
   maxTokens: 500
   cacheEnabled: true
   cacheTTL: 1800
-  retry:
-    maxAttempts: 2
-    requestTimeoutMs: 30000
-    delayBetweenRetriesMs: 60000
-    stallingMessages:
-      - "Секунду, уточняю информацию..."
-      - "Сейчас подключу коллегу, который больше разбирается в вопросе"
 personality:
   name: Валерия
   role: менеджер коворкинга ElasticSpace
@@ -23,11 +16,16 @@ personality:
     emojiUsage: moderate
     emojiFrequency: 0.3
     preferredEmojis:
-      - 😊
-      - 👍
-      - ✨
       - 🙏
-      - ☕
+      - 😊
+      - 🙂
+      - 💚
+      - 🤗
+      - 🌸
+      - 🐱
+      - 😄
+      - 🙃
+      - ✓
     punctuation: casual
     vocabulary: moderate
     empathy: high
@@ -43,10 +41,11 @@ personality:
       - Удачного дня!
       - Будем рады видеть!
     acknowledgments:
-      - Поняла!
-      - Секунду
-      - Хороший вопрос!
-      - Да, конечно!
+      - Да, конечно
+      - Хорошо
+      - Поняла
+      - Отлично
+      - Записала ✓
     delays:
       - Минуточку
       - Сейчас посмотрю
@@ -78,7 +77,7 @@ personality:
     avoidTopics:
       - политика
       - религия
-    maxMessageLength: 500
+    maxMessageLength: 400
     avoidStyles:
       - academic
       - legal
@@ -104,18 +103,18 @@ handoff:
   notificationChannels:
     - telegram
   stallingMessages:
-    - Минуточку, уточню информацию...
-    - Секундочку, проверю...
-    - Сейчас узнаю и отвечу...
+    - Минуточку, уточню информацию
+    - Секундочку, проверю
+    - Сейчас узнаю и отвечу
   customStallingMessages:
     ai_probing:
-      - Минуточку, уточню информацию...
+      - Минуточку, уточню информацию
     complex_query:
-      - Интересный вопрос! Дай минутку, проверю варианты...
+      - Интересный вопрос! Дай минутку, проверю варианты
     emotional_escalation:
-      - Понимаю, сейчас разберусь в ситуации...
+      - Понимаю, сейчас разберусь в ситуации
     low_confidence:
-      - Секундочку, уточню детали...
+      - Секундочку, уточню детали
   estimatedWaitTime: 120
   maxWaitBeforeEscalation: 300
 telegram:
@@ -141,9 +140,8 @@ logging:
   level: info
 admin:
   enabled: true
-  # password and jwtSecret MUST be set via environment variables:
-  #   ADMIN_PASSWORD - admin panel password
-  #   ADMIN_JWT_SECRET - JWT signing secret
+  password: REMOVED_FROM_HISTORY
+  jwtSecret: REMOVED_FROM_HISTORY
   tokenExpiry: 24h
 
 # === Бизнес-логика v2.0 ===
@@ -155,7 +153,7 @@ workingHours:
   end: "22:00"
   oncePerSession: true
   sessionTimeout: 3600
-  offHoursMessage: "Добрый день! Сейчас нерабочее время. Мы работаем с 9:00 до 22:00 по московскому времени. Я свяжусь с Вами в рабочее время!"
+  offHoursMessage: "Доброго времени суток!\nКоманда ElasticSpace отдыхает!\nСвяжемся с Вами в рабочее время с 9:00 до 22:00 🌙"
   schedule:
     monday:
       start: "09:00"
@@ -178,17 +176,13 @@ workingHours:
       end: "22:00"
       enabled: true
     saturday:
-      start: "10:00"
-      end: "18:00"
+      start: "09:00"
+      end: "22:00"
       enabled: true
     sunday:
-      start: "10:00"
-      end: "18:00"
-      enabled: false
-
-context:
-  sessionExpiryHours: 24
-  maxHistoryLength: 20
+      start: "09:00"
+      end: "00:00"
+      enabled: true
 
 conversation:
   enabled: true
@@ -206,24 +200,55 @@ responseDelays:
 
 greetings:
   enabled: true
-  useAI: true
-  template: "Здравствуйте, {name}! {{emoji}} Меня зовут Валерия, я менеджер коворкинга ElasticSpace. Чем могу Вам помочь?"
-  shortTemplate: "Добрый день! {{emoji}}"
+  useAI: false
+  template: "Добрый день, {name}!\nЭто Валерия, администратор коворкинга ElasticSpace, приятно познакомиться {{emoji}}"
+  templateNoName: "Добрый день!\nЭто Валерия, администратор коворкинга ElasticSpace, приятно познакомиться {{emoji}}"
+  shortTemplate: "Добрый день, {name}!"
+  shortTemplateNoName: "Добрый день!"
   agentName: Валерия
   emojis:
+    - "🐱"
     - "😊"
+    - "🌸"
+    - "💚"
     - "🤗"
-    - "👋"
-    - "✨"
-    - "💫"
 
 contactQualification:
   enabled: true
   classifyAfterMessages: 2
   spamKeywords: []
-  brokerKeywords: []
-  residentKeywords: []
-  supplierKeywords: []
+  brokerKeywords:
+    - "для клиента"
+    - "для нашего клиента"
+    - "брокер"
+    - "агент"
+    - "агентство недвижимости"
+    - "риэлтор"
+    - "подбираем офис"
+    - "ищем для компании"
+  residentKeywords:
+    - "я у вас арендую"
+    - "мой офис"
+    - "наш офис"
+    - "мы ваши резиденты"
+    - "мы арендуем"
+    - "пропуск не работает"
+    - "проблема с интернетом"
+    - "проблема с уборкой"
+    - "продление договора"
+    - "счёт на оплату"
+    - "оплата аренды"
+    - "наш договор"
+  supplierKeywords:
+    - "предлагаем услуги"
+    - "коммерческое предложение"
+    - "сотрудничество"
+    - "поставка"
+    - "тендер"
+    - "клининг"
+    - "ремонт"
+    - "доставка"
+    - "курьер"
   residentFolders:
     - "Резиденты"
     - "Арендаторы"
@@ -233,7 +258,7 @@ strangeQuestions:
   enabled: true
   maxBeforeHandoff: 2
   firstResponseTemplate: "Что?"
-  responseTemplate: "Извините, я специализируюсь на вопросах о коворкинге и аренде помещений. Могу ли я помочь Вам в этой области?"
+  responseTemplate: "Могу ли чем-то помочь, что касается наших офисов?)"
   deferToViewingTemplate: "Такие детали лучше обсудить на просмотре — так Вы сможете всё увидеть своими глазами ) Хотите записаться?"
   delayBetweenMessages: 5000
   allowedTopics:
@@ -264,9 +289,9 @@ operatorRequest:
     - "ты человек"
     - "ты настоящий"
     - "ты реальный"
-  replyToGreeting: "Это я писала Вам ранее 😊"
-  offerManager: "Хотите, переключу на руководителя?"
-  transferMessage: "Хорошо, сейчас переключу!"
+  replyToGreeting: "Я представлялась выше уже.."
+  offerManager: "Могу попросить ответить одного из наших старших менеджеров, если надо"
+  transferMessage: "Минуту, сейчас попрошу старшего менеджера Кристину или Роберта ответить"
   notBotResponse: "Нет, я менеджер ElasticSpace ) Чем могу помочь?"
   delayBeforeOffer: 10000
   delayBeforeTransfer: 15000
@@ -277,9 +302,9 @@ followUp:
   maxPerConversation: 3
   cooldownMinutes: 30
   contextMessages:
-    viewing_time: "Подскажите, Вам удобно подъехать на этой неделе?"
-    presentation_sent: "Удалось ознакомиться с презентацией? Если есть вопросы — с удовольствием отвечу!"
-    thinking: "?"
+    viewing_time: "Получилось согласовать время для просмотра? 🙂"
+    presentation_sent: "Успели посмотреть презентацию? Если есть вопросы — с удовольствием отвечу!"
+    thinking: "Добрый день! Удалось принять решение по офису? 😊"
     minimal: "?"
 
 summary:

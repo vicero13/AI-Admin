@@ -198,11 +198,11 @@ export class ContactQualifier {
       case ContactType.RESIDENT:
         return {
           type: ContactType.RESIDENT,
-          allowFullService: true,
-          limitedTopics: ['техподдержка', 'сервис', 'бронирования', 'мероприятия'],
-          handoffToManager: false,
+          allowFullService: false,
+          limitedTopics: [],
+          handoffToManager: true,
           ignoreMessages: false,
-          additionalInstructions: 'Это текущий резидент/арендатор. Помоги с вопросами по обслуживанию, бронированиям переговорных и техническим проблемам.',
+          additionalInstructions: 'Это текущий резидент/арендатор. Вежливо ответь на вопрос и СРАЗУ передай менеджеру. Не пытайся решить проблему самостоятельно — передай живому коллеге.',
         };
 
       case ContactType.SUPPLIER:

@@ -1,28 +1,26 @@
 {
-  "version": "2.1.0",
+  "version": "3.0.0",
   "created": "2025-01-15T00:00:00Z",
-  "lastUpdated": "2025-01-30T10:00:00Z",
+  "lastUpdated": "2025-02-01T12:00:00Z",
   "updatedBy": "admin",
-  "businessName": "КоВоркинг Пространство «Орбита»",
+  "businessName": "ElasticSpace",
 
   "statistics": {
-    "totalItems": 156,
+    "totalItems": 29,
     "byType": {
       "business_info": 1,
-      "services": 5,
-      "faq": 22,
+      "services": 4,
+      "faq": 15,
       "policies": 3,
       "dialog_examples": 6,
-      "team_members": 3
+      "team_members": 0
     },
     "byCategory": {
-      "general": 10,
-      "pricing": 7,
-      "booking": 5,
-      "policies": 3,
-      "technical": 1,
-      "location": 1,
-      "services": 1
+      "location": 4,
+      "pricing": 3,
+      "policies": 2,
+      "services": 5,
+      "booking": 1
     }
   },
 
@@ -43,6 +41,20 @@
   ],
 
   "changelog": [
+    {
+      "version": "3.0.0",
+      "date": "2025-02-01",
+      "changes": [
+        "Полная замена базы знаний: Орбита → ElasticSpace",
+        "Обновлена информация о бизнесе (3 локации: Чистые пруды, Сокол, Цветной бульвар)",
+        "Обновлены услуги: сервисные офисы вместо коворкинга",
+        "Обновлены FAQ: локации, цены, условия договора",
+        "Обновлены политики: условия аренды ElasticSpace",
+        "Обновлены примеры диалогов под контекст ElasticSpace",
+        "Очищен файл команды (team.json)"
+      ],
+      "author": "admin"
+    },
     {
       "version": "2.1.0",
       "date": "2025-01-30",
@@ -73,7 +85,7 @@
   ],
 
   "integrity": {
-    "lastCheck": "2025-01-30T10:00:00Z",
+    "lastCheck": "2025-02-01T12:00:00Z",
     "status": "valid",
     "issues": []
   }

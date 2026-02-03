@@ -284,41 +284,5 @@
       "availableFrom": "available",
       "addedDate": "2025-02-01"
     }
-  },
-  {
-    "serviceId": "chistye-prudy-314",
-    "name": "Офис №314 на 6 мест (Чистые пруды)",
-    "description": "Офис №314 на 6 рабочих мест на локации Чистые пруды. Историческая усадьба Демидовых с современным интерьером.",
-    "category": "office",
-    "pricing": [
-      {
-        "amount": 228000,
-        "currency": "RUB",
-        "unit": "месяц",
-        "conditions": "Офис на 6 рабочих мест"
-      }
-    ],
-    "available": true,
-    "features": [
-      "6 рабочих мест",
-      "Историческая усадьба Демидовых",
-      "Современный интерьер",
-      "Веранда и сад",
-      "Все удобства включены"
-    ],
-    "popular": false,
-    "tags": [
-      "чистые пруды",
-      "офис",
-      "6 мест",
-      "усадьба демидовых",
-      "аренда"
-    ],
-    "metadata": {
-      "location": "chistye-prudy",
-      "seats": 6,
-      "availableFrom": "available",
-      "addedDate": "2025-02-01"
-    }
   }
 ]

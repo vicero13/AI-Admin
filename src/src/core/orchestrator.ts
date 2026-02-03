@@ -226,7 +226,7 @@ export class Orchestrator {
 
       // 3. Проверить режим — если human mode, не отвечаем
       if (context.mode === ConversationMode.HUMAN) {
-        this.logger.debug(`Conversation ${conversationId} is in HUMAN mode, skipping`);
+        this.logger.info(`[Step 3] HUMAN mode for ${conversationId}, skipping message: "${text.substring(0, 50)}"`);
         await this.contextManager.addMessage(conversationId, {
           messageId: message.messageId,
           timestamp: message.timestamp,
@@ -312,11 +312,32 @@ export class Orchestrator {
           const messageId = message.metadata?.custom?.messageId as number | undefined;
           const status = this.conversationDetector.detectStatus(conversationId, freshContext, messageId);
           greetingType = this.conversationDetector.getGreetingType(status);
+
+          // При обнаружении нового разговора (очистка чата / долгий перерыв) — сбросить историю
+          if (status === 'new_conversation' || status === 'new_contact') {
+            if (freshContext.messageHistory && freshContext.messageHistory.length > 0) {
+              // Очищаем историю сообщений, но сохраняем контекст (userId, platform и т.д.)
+              this.contextManager.updateContext(conversationId, {
+                messageHistory: [],
+                mode: ConversationMode.AI,
+                requiresHandoff: false,
+                suspectAI: false,
+                complexQuery: false,
+              });
+              this.conversationDetector.resetConversation(conversationId);
+              this.logger.info(`[Orchestrator] Context reset for ${conversationId} — status: ${status}`);
+            }
+          }
         } else if (this.greetingService.isNewContact(freshContext)) {
           greetingType = 'full';
         }
 
         if (greetingType !== 'none') {
+          // Сразу помечаем, что приветствие запланировано — защита от дублирования
+          if (this.conversationDetector) {
+            this.conversationDetector.markGreetingSent(conversationId);
+          }
+
           const userName = message.metadata?.custom?.firstName as string | undefined
             || context.clientProfile?.name;
           const greeting = await this.greetingService.generateGreeting(userName, freshContext, greetingType);
@@ -346,6 +367,73 @@ export class Orchestrator {
         if (this.contactQualifier.shouldIgnore(contactType)) {
           this.logger.info(`Spam detected from ${conversationId}, ignoring`);
           return null;
+        }
+
+        // Auto-handoff for residents, suppliers, etc.
+        const strategy = this.contactQualifier.getHandlingStrategy(contactType);
+        if (strategy.handoffToManager) {
+          this.logger.info(`Contact type ${contactType} requires handoff for ${conversationId}`);
+
+          // Generate a brief polite response before handoff
+          const handoffReason: HandoffReason = {
+            type: HandoffReasonType.SPECIAL_REQUEST,
+            description: `Контакт классифицирован как ${contactType}: ${strategy.additionalInstructions}`,
+            severity: RiskLevel.LOW,
+            detectedBy: 'contact_qualifier',
+          };
+
+          await this.handoffSystem.initiateHandoff(conversationId, handoffReason, updatedContext);
+          await this.contextManager.updateContext(conversationId, {
+            mode: ConversationMode.HUMAN,
+            requiresHandoff: true,
+          });
+
+          // Use AI to generate a natural brief response acknowledging their request
+          // before handing off, with the additionalInstructions from strategy
+          try {
+            const knowledgeResults = await this.knowledgeBase.search(text, 3);
+            const relevantItems = knowledgeResults.map((r) => r.item);
+            const aiResponse = await this.aiEngine.generateHumanLikeResponse(
+              text,
+              updatedContext,
+              relevantItems,
+              this.config.personality
+            );
+
+            const responseText = await this.humanMimicry.makeNatural(aiResponse.text, {
+              allowTypo: false,
+              useColloquialisms: true,
+              varyStructure: true,
+              useContractions: false,
+            });
+
+            await this.contextManager.addMessage(conversationId, {
+              messageId: `ai-handoff-qualify-${Date.now()}`,
+              timestamp: Date.now(),
+              role: MessageRole.ASSISTANT,
+              content: responseText,
+              handledBy: MessageHandler.AI,
+            });
+
+            return {
+              responseText,
+              typingDelay: this.humanMimicry.calculateTypingDelay(responseText),
+            };
+          } catch {
+            // Fallback: simple handoff message
+            const fallbackMsg = 'Добрый день! Сейчас переключу на коллегу, который сможет помочь 🙏';
+            await this.contextManager.addMessage(conversationId, {
+              messageId: `ai-handoff-qualify-${Date.now()}`,
+              timestamp: Date.now(),
+              role: MessageRole.ASSISTANT,
+              content: fallbackMsg,
+              handledBy: MessageHandler.AI,
+            });
+            return {
+              responseText: fallbackMsg,
+              typingDelay: this.humanMimicry.calculateTypingDelay(fallbackMsg),
+            };
+          }
         }
       }
 
@@ -381,9 +469,11 @@ export class Orchestrator {
 
       // 9. Анализ ситуации
       const analysis = await this.situationDetector.analyze(message, updatedContext);
+      this.logger.info(`[Step 9] Analysis for "${text.substring(0, 50)}": confidence=${analysis.confidence.score}, complexity=${analysis.complexity.score}, aiProbing=${analysis.aiProbing.detected}, emotion=${analysis.emotionalState.state}, requiresHandoff=${analysis.requiresHandoff}`);
 
       // 10. Проверить необходимость передачи менеджеру
       if (analysis.requiresHandoff && analysis.handoffReason) {
+        this.logger.info(`[Step 10] HANDOFF for "${text.substring(0, 50)}": reason=${analysis.handoffReason.type}, description=${analysis.handoffReason.description}`);
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 
@@ -472,6 +562,8 @@ export class Orchestrator {
       const retryConfig = this.config.aiEngine.retry;
       const maxAttempts = retryConfig?.maxAttempts ?? 1;
 
+      this.logger.info(`[Step 14] Generating AI response for "${text.substring(0, 50)}", maxAttempts=${maxAttempts}`);
+
       let aiResponse: HumanLikeResponse | null = null;
       let lastError: Error | null = null;
 
@@ -484,6 +576,7 @@ export class Orchestrator {
             this.config.personality
           );
           lastError = null;
+          this.logger.info(`[Step 14] AI response OK: confidence=${aiResponse.confidence}, handoff=${aiResponse.requiresHandoff}`);
           break; // Success — exit retry loop
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -498,7 +591,7 @@ export class Orchestrator {
             const stallingMessages = retryConfig?.stallingMessages ?? [];
             const stallingText = stallingMessages[attempt - 1]
               ?? stallingMessages[0]
-              ?? 'Секунду, уточняю информацию...';
+              ?? 'Секунду, уточняю информацию';
 
             await this.contextManager.addMessage(conversationId, {
               messageId: `ai-stall-retry-${Date.now()}`,
@@ -519,6 +612,8 @@ export class Orchestrator {
 
       // All attempts failed — handoff to human
       if (!aiResponse || lastError) {
+        this.logger.error(`[Step 14] AI FAILED for "${text.substring(0, 50)}": ${lastError?.message ?? 'no response'}`);
+
         const handoffStallingMessages = retryConfig?.stallingMessages ?? [];
         const handoffText = handoffStallingMessages.length > 1
           ? handoffStallingMessages[handoffStallingMessages.length - 1]
@@ -553,6 +648,7 @@ export class Orchestrator {
 
       // 15. Проверить ответ — если AI не уверен, передать менеджеру
       if (aiResponse.requiresHandoff && aiResponse.handoffReason) {
+        this.logger.info(`[Step 15] AI requested handoff: ${aiResponse.handoffReason.type} — ${aiResponse.handoffReason.description}`);
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 

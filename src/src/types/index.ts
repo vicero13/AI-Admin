@@ -191,8 +191,7 @@ export enum LogLevel {
 
 export enum AIProvider {
   ANTHROPIC = 'anthropic',
-  // Planned providers (not yet implemented):
-  // OPENAI = 'openai',
+  OPENAI = 'openai',
   // LOCAL = 'local',
 }
 
