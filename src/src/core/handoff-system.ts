@@ -182,7 +182,8 @@ export class HandoffSystem {
 
   formatNotification(handoff: Handoff): string {
     const urgencyEmoji = this.getUrgencyEmoji(handoff.priority);
-    const reasonDescription = this.getReasonDescription(handoff.reason);
+    const reasonLabel = this.getReasonLabel(handoff.reason);
+    const reasonDetails = this.getReasonDetails(handoff);
     const timestamp = new Date(handoff.initiatedAt).toLocaleString('ru-RU', {
       timeZone: 'Europe/Moscow',
     });
@@ -192,20 +193,99 @@ export class HandoffSystem {
       .map((msg) => `  ${msg.role === 'user' ? '👤' : '🤖'} ${msg.content}`)
       .join('\n');
 
-    return [
-      `${urgencyEmoji} НОВЫЙ ХЕНДОФФ`,
+    const parts = [
+      `${urgencyEmoji} ХЕНДОФФ: ${reasonLabel}`,
       ``,
-      `Причина: ${reasonDescription}`,
-      `Приоритет: ${handoff.priority.toUpperCase()}`,
+    ];
+
+    // Добавляем детали причины, если есть
+    if (reasonDetails) {
+      parts.push(`📋 ${reasonDetails}`, ``);
+    }
+
+    parts.push(
       `Клиент: ${handoff.userId}`,
-      `ID диалога: ${handoff.conversationId}`,
+      `ID: ${handoff.conversationId}`,
       ``,
       `📝 Последние сообщения:`,
       lastMessages,
       ``,
       `🕐 ${timestamp}`,
-      `🆔 ${handoff.handoffId}`,
-    ].join('\n');
+    );
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Короткая метка причины для заголовка
+   */
+  private getReasonLabel(reason: HandoffReason): string {
+    const labels: Record<string, string> = {
+      [HandoffReasonType.AI_PROBING]: '🤖 Проверка на бота',
+      [HandoffReasonType.COMPLEX_QUERY]: '❓ Сложный вопрос',
+      [HandoffReasonType.EMOTIONAL_ESCALATION]: '😤 Негатив клиента',
+      [HandoffReasonType.LOW_CONFIDENCE]: '📭 Нет данных в базе',
+      [HandoffReasonType.SPECIAL_REQUEST]: '🏢 Не клиент',
+      [HandoffReasonType.OUT_OF_SCOPE]: '🚫 Вне компетенции',
+      [HandoffReasonType.TECHNICAL_ISSUE]: '⚙️ Тех. проблема',
+      [HandoffReasonType.MANUAL_REQUEST]: '👋 Запрос менеджера',
+    };
+
+    return labels[reason.type] ?? reason.type;
+  }
+
+  /**
+   * Детальное описание причины с контекстом
+   */
+  private getReasonDetails(handoff: Handoff): string | null {
+    const reason = handoff.reason;
+    const context = handoff.context;
+    const lastUserMessage = context.messageHistory
+      .filter(m => m.role === 'user')
+      .slice(-1)[0]?.content;
+
+    switch (reason.type) {
+      case HandoffReasonType.SPECIAL_REQUEST:
+        // Тип контакта (резидент, поставщик, брокер)
+        if (reason.description.includes('RESIDENT')) {
+          return '👤 Тип: РЕЗИДЕНТ (текущий арендатор)';
+        }
+        if (reason.description.includes('SUPPLIER')) {
+          return '📦 Тип: ПОСТАВЩИК (предлагает услуги)';
+        }
+        if (reason.description.includes('BROKER')) {
+          return '🤝 Тип: БРОКЕР/АГЕНТ';
+        }
+        return reason.description;
+
+      case HandoffReasonType.LOW_CONFIDENCE:
+        // Вопрос, на который не нашлось ответа
+        if (lastUserMessage) {
+          return `Вопрос без ответа: "${lastUserMessage.slice(0, 100)}${lastUserMessage.length > 100 ? '...' : ''}"`;
+        }
+        return 'Информации нет в базе знаний';
+
+      case HandoffReasonType.OUT_OF_SCOPE:
+        if (lastUserMessage) {
+          return `Нетематический вопрос: "${lastUserMessage.slice(0, 100)}${lastUserMessage.length > 100 ? '...' : ''}"`;
+        }
+        return reason.description;
+
+      case HandoffReasonType.EMOTIONAL_ESCALATION:
+        return `Клиент недоволен. ${reason.description}`;
+
+      case HandoffReasonType.COMPLEX_QUERY:
+        if (lastUserMessage) {
+          return `Сложный запрос: "${lastUserMessage.slice(0, 100)}${lastUserMessage.length > 100 ? '...' : ''}"`;
+        }
+        return reason.description;
+
+      case HandoffReasonType.TECHNICAL_ISSUE:
+        return `Техническая ошибка: ${reason.description}`;
+
+      default:
+        return reason.description !== reason.type ? reason.description : null;
+    }
   }
 
   // --- Принятие и завершение ---

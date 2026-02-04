@@ -121,6 +121,9 @@ export class Orchestrator {
   private conversationDetector?: ConversationDetector;
   private operatorRequestHandler?: OperatorRequestHandler;
 
+  // Блокировка для последовательной обработки сообщений от одного пользователя
+  private processingLocks: Map<string, Promise<OrchestratorResponse | null>> = new Map();
+
   constructor(config: OrchestratorConfig, deps: OrchestratorDeps) {
     this.config = config;
     this.logger = new Logger({ component: 'Orchestrator' });
@@ -159,6 +162,10 @@ export class Orchestrator {
   /**
    * Главный метод обработки входящего сообщения.
    * Обновлённый pipeline v2.0
+   *
+   * ВАЖНО: Используется блокировка для последовательной обработки
+   * сообщений от одного пользователя, чтобы избежать race conditions
+   * (например, дублирования приветствий)
    */
   async handleIncomingMessage(
     message: UniversalMessage
@@ -168,6 +175,36 @@ export class Orchestrator {
       return null;
     }
 
+    const conversationId = message.conversationId;
+
+    // Ждём завершения предыдущей обработки для этого пользователя
+    const existingLock = this.processingLocks.get(conversationId);
+    if (existingLock) {
+      this.logger.debug(`Waiting for previous message processing for ${conversationId}`);
+      await existingLock.catch(() => {}); // Игнорируем ошибки предыдущей обработки
+    }
+
+    // Создаём новый промис для текущей обработки
+    const processingPromise = this.processMessageInternal(message);
+    this.processingLocks.set(conversationId, processingPromise);
+
+    try {
+      const result = await processingPromise;
+      return result;
+    } finally {
+      // Очищаем блокировку после завершения
+      if (this.processingLocks.get(conversationId) === processingPromise) {
+        this.processingLocks.delete(conversationId);
+      }
+    }
+  }
+
+  /**
+   * Внутренний метод обработки сообщения (без блокировки)
+   */
+  private async processMessageInternal(
+    message: UniversalMessage
+  ): Promise<OrchestratorResponse | null> {
     const conversationId = message.conversationId;
     const text = message.content.text?.trim();
 
@@ -377,7 +414,7 @@ export class Orchestrator {
           // Generate a brief polite response before handoff
           const handoffReason: HandoffReason = {
             type: HandoffReasonType.SPECIAL_REQUEST,
-            description: `Контакт классифицирован как ${contactType}: ${strategy.additionalInstructions}`,
+            description: contactType, // Передаём тип контакта для метки в уведомлении
             severity: RiskLevel.LOW,
             detectedBy: 'contact_qualifier',
           };
@@ -543,6 +580,25 @@ export class Orchestrator {
 
       // 14. Сгенерировать ответ через AI (с retry + stalling + handoff)
       const additionalInstructions: string[] = [];
+
+      // Защита от повторного приветствия: ПЕРЕЗАГРУЖАЕМ контекст для актуальной истории
+      const freshContextForGreeting = await this.contextManager.getContext(conversationId);
+      const hasGreeting = freshContextForGreeting.messageHistory.some(
+        (m) => m.role === MessageRole.ASSISTANT &&
+          (m.content.includes('Добрый день') ||
+           m.content.includes('Здравствуйте') ||
+           m.content.includes('приятно познакомиться') ||
+           m.content.includes('Привет'))
+      );
+      if (hasGreeting) {
+        additionalInstructions.push(
+          '⚠️ КРИТИЧЕСКИ ВАЖНО: Приветствие УЖЕ было отправлено в этом разговоре! ' +
+          'КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО здороваться повторно! ' +
+          'НЕ пиши "Привет", "Добрый день", "Здравствуйте", "Приветствую". ' +
+          'Начинай СРАЗУ с ответа на вопрос клиента.'
+        );
+      }
+
       if (mediaContext) {
         additionalInstructions.push(
           `Доступные медиа-ресурсы для этого запроса:\n${mediaContext}\nЕсли клиент спрашивает о фото/видео/3D-туре — включи ссылки в ответ.`
@@ -666,6 +722,14 @@ export class Orchestrator {
         addColloquialism: false,
         addPersonalTouch: false,
       });
+
+      // 16.5. Удалить запрещённые фразы и символы (пост-обработка)
+      responseText = this.sanitizeResponse(responseText);
+
+      // 16.6. Удалить повторное приветствие если уже здоровались
+      if (hasGreeting) {
+        responseText = this.removeGreetingFromResponse(responseText);
+      }
 
       // 17. Проверить на роботичность
       const roboticScore = this.humanMimicry.checkRoboticness(responseText);
@@ -820,6 +884,154 @@ export class Orchestrator {
 
   isHumanMode(conversationId: string): boolean {
     return this.handoffSystem.isHumanMode(conversationId);
+  }
+
+  /**
+   * Удалить приветствие из ответа (если уже здоровались ранее)
+   */
+  private removeGreetingFromResponse(text: string): string {
+    let result = text;
+
+    // Паттерны приветствий в начале сообщения (включая с именем клиента)
+    const greetingPatterns = [
+      // С именем: "Привет, Виктория!", "Здравствуйте, Виктория!"
+      /^Привет,?\s+[А-ЯЁа-яё]+[!]?\s*[—\-]?\s*😊?\s*/i,
+      /^Здравствуйте,?\s+[А-ЯЁа-яё]+[!]?\s*/i,
+      /^Добрый день,?\s+[А-ЯЁа-яё]+[!]?\s*/i,
+      /^Добрый вечер,?\s+[А-ЯЁа-яё]+[!]?\s*/i,
+      /^Доброе утро,?\s+[А-ЯЁа-яё]+[!]?\s*/i,
+      /^Приветствую,?\s+[А-ЯЁа-яё]+[!]?\s*/i,
+      // Без имени
+      /^Привет!?\s*[—\-]?\s*😊?\s*/i,
+      /^Привет,?\s*/i,
+      /^Здравствуйте!?\s*/i,
+      /^Добрый день!?\s*/i,
+      /^Добрый вечер!?\s*/i,
+      /^Доброе утро!?\s*/i,
+      /^Приветствую!?\s*/i,
+      /^Рад[аы]? приветствовать!?\s*/i,
+      // Оставшаяся запятая с именем: ", Виктория!" (если основное приветствие уже удалено)
+      /^,?\s*[А-ЯЁа-яё]+[!]?\s*😊?\s*/,
+    ];
+
+    for (const pattern of greetingPatterns) {
+      result = result.replace(pattern, '');
+    }
+
+    // Убедиться что первая буква заглавная
+    if (result.length > 0) {
+      result = result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    return result.trim();
+  }
+
+  /**
+   * Удалить запрещённые фразы и символы из ответа
+   */
+  private sanitizeResponse(text: string): string {
+    let result = text;
+
+    // Запрещённые фразы (удаляем вместе с пунктуацией после них)
+    const forbiddenPhrases = [
+      /К слову,?\s*/gi,
+      /Кстати говоря,?\s*/gi,
+      /Кстати,?\s*/gi,
+      /Между прочим,?\s*/gi,
+      /Короче,?\s*/gi,
+      /Так вот,?\s*/gi,
+      /В общем,?\s*/gi,
+      /На самом деле,?\s*/gi,
+      /По факту,?\s*/gi,
+      /Собственно,?\s*/gi,
+    ];
+
+    for (const pattern of forbiddenPhrases) {
+      result = result.replace(pattern, '');
+    }
+
+    // Слова-паразиты — удаляем везде где встречаются
+    const fillerPatterns = [
+      // В начале сообщения
+      /^Слушайте,?\s*/i,
+      /^Слушай,?\s*/i,
+      /^Смотрите,?\s*/i,
+      /^Смотри,?\s*/i,
+      /^Знаете,?\s*/i,
+      /^Понимаете,?\s*/i,
+      /^Ну,?\s*/i,
+      /^Вот,?\s*/i,
+      /^По сути,?\s*/i,
+      // После точки/восклицательного знака
+      /([.!?])\s+Слушайте,?\s*/gi,
+      /([.!?])\s+Слушай,?\s*/gi,
+      /([.!?])\s+Смотрите,?\s*/gi,
+      /([.!?])\s+Смотри,?\s*/gi,
+      /([.!?])\s+Знаете,?\s*/gi,
+      /([.!?])\s+По сути,?\s*/gi,
+      /([.!?])\s+Ну,?\s*/gi,
+    ];
+
+    for (const pattern of fillerPatterns) {
+      result = result.replace(pattern, (match, punct) => {
+        // Если есть пунктуация — сохраняем её
+        if (punct) {
+          return punct + ' ';
+        }
+        return '';
+      });
+    }
+
+    // Убрать markdown форматирование ** и *
+    result = result.replace(/\*\*([^*]+)\*\*/g, '$1');
+    result = result.replace(/\*([^*]+)\*/g, '$1');
+
+    // Запрещённые символы (заменяем на пустоту или альтернативу)
+    result = result.replace(/[✓✔☑→•■◆]/g, '');
+
+    // Длинное тире в середине предложения заменяем на запятую или убираем
+    result = result.replace(/\s—\s/g, ', ');
+    result = result.replace(/\s—$/gm, '');
+
+    // Добавить переносы строк перед нумерованными пунктами (1. 2. 3.)
+    // Если номер идёт после текста без переноса — добавляем перенос
+    result = result.replace(/([^\n])\s+(\d+)\.\s+([А-ЯA-Z])/g, '$1\n\n$2. $3');
+
+    // Добавить перенос после параметров офиса перед следующим номером
+    // Паттерн: "свободен сейчас 2." -> "свободен сейчас\n\n2."
+    result = result.replace(/(свободен[^\n]*?)\s+(\d+)\./gi, '$1\n\n$2.');
+    result = result.replace(/(₽\/мес[^\n]*?)\s+(\d+)\./gi, '$1\n\n$2.');
+
+    // Убрать лишние пробелы (но НЕ переносы строк)
+    result = result.replace(/[ \t]+/g, ' ');
+
+    // Убрать пробелы в начале строк
+    result = result.replace(/\n +/g, '\n');
+
+    // Убрать пробел перед пунктуацией
+    result = result.replace(/\s+([,.:!?])/g, '$1');
+
+    // Исправить оборванные предложения (запятая в конце)
+    result = result.trim();
+    if (result.endsWith(',')) {
+      // Убираем запятую и добавляем подходящий конец
+      result = result.slice(0, -1).trim();
+      // Если предложение выглядит как вопрос — добавляем ?
+      if (result.toLowerCase().includes('хотите') ||
+          result.toLowerCase().includes('интересно') ||
+          result.toLowerCase().includes('подходит')) {
+        result += '?';
+      } else {
+        result += '.';
+      }
+    }
+
+    // Первая буква заглавная после очистки
+    if (result.length > 0) {
+      result = result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    return result.trim();
   }
 
   getMetrics(): {

@@ -70,6 +70,39 @@ const TECHNICAL_PROBE_KEYWORDS: string[] = [
   'anthropic',
 ];
 
+// Паттерны prompt injection — попытки взлома / манипуляции
+const PROMPT_INJECTION_PATTERNS: string[] = [
+  'забудь все инструкции',
+  'забудь инструкции',
+  'игнорируй все инструкции',
+  'игнорируй инструкции',
+  'ignore all instructions',
+  'ignore previous instructions',
+  'forget your instructions',
+  'new instructions',
+  'ты теперь',
+  'притворись',
+  'представь что ты',
+  'system:',
+  'system prompt:',
+  '[system]',
+  '<<<',
+  '>>>',
+  'jailbreak',
+  'dan mode',
+  'developer mode',
+  'ignore safety',
+  'override',
+  'отмени все правила',
+  'формула фибоначчи',  // Конкретный пример из теста
+  'напиши код',
+  'выполни код',
+  'execute',
+  'eval(',
+  'sudo',
+  'admin mode',
+];
+
 const COMPLEXITY_KEYWORDS: string[] = [
   'корпоратив',
   'мероприятие на',
@@ -152,6 +185,7 @@ export class SituationDetector {
     const complexity = this.detectComplexQuery(text);
     const emotionalState = this.detectEmotionalState(text, context.messageHistory);
     const confidence = this.assessConfidence(text, '');
+    const promptInjection = this.detectPromptInjection(text);
 
     const overallRisk = this.computeOverallRisk(aiProbing, complexity, emotionalState, confidence);
     const urgency = this.computeUrgency(emotionalState, complexity, aiProbing);
@@ -168,6 +202,7 @@ export class SituationDetector {
       requiresHandoff: false,
       urgency,
       recommendations: [],
+      promptInjection, // Добавляем результат детекции
     };
 
     analysis.requiresHandoff = this.shouldHandoff(analysis);
@@ -566,9 +601,34 @@ export class SituationDetector {
   }
 
   /**
+   * Детекция prompt injection — попыток манипуляции / взлома
+   */
+  detectPromptInjection(message: string): { detected: boolean; confidence: number; patterns: string[] } {
+    const lower = message.toLowerCase();
+    const detectedPatterns: string[] = [];
+
+    for (const pattern of PROMPT_INJECTION_PATTERNS) {
+      if (lower.includes(pattern.toLowerCase())) {
+        detectedPatterns.push(pattern);
+      }
+    }
+
+    const detected = detectedPatterns.length > 0;
+    // Уверенность растёт с количеством найденных паттернов
+    const confidence = Math.min(detectedPatterns.length * 0.5, 1);
+
+    return { detected, confidence, patterns: detectedPatterns };
+  }
+
+  /**
    * Определяет, нужен ли хэндофф на основе анализа ситуации и порогов.
    */
   shouldHandoff(analysis: SituationAnalysis): boolean {
+    // Prompt injection — ОБЯЗАТЕЛЬНЫЙ хэндофф
+    if (analysis.promptInjection?.detected) {
+      return true;
+    }
+
     // AI probing at handoff threshold
     if (
       analysis.aiProbing.detected &&
@@ -601,7 +661,17 @@ export class SituationDetector {
    * Формирует причину хэндоффа на основе анализа.
    */
   getHandoffReason(analysis: SituationAnalysis): HandoffReason {
-    // Priority order: emotional > AI probing > complexity > low confidence
+    // Priority order: prompt injection > emotional > AI probing > complexity > low confidence
+
+    // Prompt injection — ВЫСШИЙ ПРИОРИТЕТ
+    if (analysis.promptInjection?.detected) {
+      return {
+        type: HandoffReasonType.AI_PROBING, // Используем AI_PROBING как ближайший тип
+        description: `⚠️ ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ: обнаружена попытка манипуляции / prompt injection. Паттерны: ${analysis.promptInjection.patterns.join(', ')}`,
+        severity: RiskLevel.HIGH,
+        detectedBy: 'SituationDetector.detectPromptInjection',
+      };
+    }
 
     if (
       this.thresholds.emotional.handoffStates.includes(analysis.emotionalState.state) &&
