@@ -2,15 +2,15 @@ server:
   port: 3000
   host: 0.0.0.0
 ai:
-  provider: openai
-  model: gpt-5.2
+  provider: anthropic
+  model: claude-sonnet-4-20250514
   temperature: 0.7
-  maxTokens: 500
+  maxTokens: 1024
   cacheEnabled: true
   cacheTTL: 1800
 personality:
   name: Валерия
-  role: менеджер коворкинга ElasticSpace
+  role: администратор коворкинга ElasticSpace
   style: friendly
   traits:
     emojiUsage: moderate
@@ -25,7 +25,6 @@ personality:
       - 🐱
       - 😄
       - 🙃
-      - ✓
     punctuation: casual
     vocabulary: moderate
     empathy: high
@@ -45,7 +44,7 @@ personality:
       - Хорошо
       - Поняла
       - Отлично
-      - Записала ✓
+      - Записала
     delays:
       - Минуточку
       - Сейчас посмотрю
@@ -53,7 +52,6 @@ personality:
     apologies:
       - Извините за ожидание!
     transitions:
-      - Кстати,
       - А ещё
     fillers:
       - вот
@@ -215,7 +213,7 @@ greetings:
 
 contactQualification:
   enabled: true
-  classifyAfterMessages: 2
+  classifyAfterMessages: 1
   spamKeywords: []
   brokerKeywords:
     - "для клиента"
@@ -249,6 +247,19 @@ contactQualification:
     - "ремонт"
     - "доставка"
     - "курьер"
+    - "поставщик"
+    - "прайс-лист"
+    - "каталог"
+    - "оборудование"
+    - "мебель"
+    - "канцелярия"
+    - "вода"
+    - "стаканчики"
+    - "кофе оптом"
+    - "расходные материалы"
+    - "обслуживание"
+    - "предлагаю"
+    - "хотим предложить"
   residentFolders:
     - "Резиденты"
     - "Арендаторы"

@@ -321,6 +321,19 @@ export class KnowledgeBase {
 
     // Services
     for (const service of this.services) {
+      // Извлекаем количество мест из metadata или названия
+      const seats = (service.metadata as any)?.seats;
+      const seatsKeywords: string[] = [];
+      if (seats) {
+        seatsKeywords.push(
+          `${seats} человек`,
+          `${seats} сотрудников`,
+          `${seats} мест`,
+          `на ${seats}`,
+          `${seats} чел`,
+        );
+      }
+
       items.push({
         id: `service-${service.serviceId}`,
         type: KnowledgeType.SERVICE,
@@ -332,8 +345,10 @@ export class KnowledgeBase {
         keywords: [
           service.name.toLowerCase(),
           service.category.toLowerCase(),
+          service.description.toLowerCase(),
           ...service.features.map((f) => f.toLowerCase()),
           ...service.tags.map((t) => t.toLowerCase()),
+          ...seatsKeywords,
         ],
         confidence: 1.0,
         lastVerified: now,

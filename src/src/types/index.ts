@@ -335,6 +335,7 @@ export interface SituationAnalysis {
   handoffReason?: HandoffReason;
   urgency: UrgencyLevel;
   recommendations: string[];
+  promptInjection?: { detected: boolean; confidence: number; patterns: string[] };
   metadata?: Record<string, unknown>;
 }
 
