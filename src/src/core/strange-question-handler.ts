@@ -158,8 +158,27 @@ export class StrangeQuestionHandler {
 
   // --- Private helpers ---
 
+  /**
+   * Конвертация текста, набранного в английской раскладке, в русскую.
+   * "ghbdtn" → "привет"
+   */
+  private convertEnToRu(text: string): string {
+    const enToRu: Record<string, string> = {
+      'q': 'й', 'w': 'ц', 'e': 'у', 'r': 'к', 't': 'е', 'y': 'н', 'u': 'г',
+      'i': 'ш', 'o': 'щ', 'p': 'з', '[': 'х', ']': 'ъ', 'a': 'ф', 's': 'ы',
+      'd': 'в', 'f': 'а', 'g': 'п', 'h': 'р', 'j': 'о', 'k': 'л', 'l': 'д',
+      ';': 'ж', "'": 'э', 'z': 'я', 'x': 'ч', 'c': 'с', 'v': 'м', 'b': 'и',
+      'n': 'т', 'm': 'ь', ',': 'б', '.': 'ю', '/': '.',
+    };
+    return text.toLowerCase().split('').map(c => enToRu[c] || c).join('');
+  }
+
   private isObviouslyOnTopic(message: string): boolean {
     const lower = message.toLowerCase();
+
+    // Проверяем и оригинал, и конвертированную из английской раскладки версию
+    const converted = this.convertEnToRu(lower);
+    const textsToCheck = [lower, converted];
 
     const onTopicKeywords = [
       'аренда', 'аренду', 'арендовать', 'офис', 'коворкинг',
@@ -181,7 +200,7 @@ export class StrangeQuestionHandler {
       ...this.config.allowedTopics.map((t) => t.toLowerCase()),
     ];
 
-    return onTopicKeywords.some((kw) => lower.includes(kw));
+    return onTopicKeywords.some((kw) => textsToCheck.some((t) => t.includes(kw)));
   }
 
   private isObviouslyStrange(message: string): boolean {

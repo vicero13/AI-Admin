@@ -229,6 +229,7 @@ export class HandoffSystem {
       [HandoffReasonType.OUT_OF_SCOPE]: '🚫 Вне компетенции',
       [HandoffReasonType.TECHNICAL_ISSUE]: '⚙️ Тех. проблема',
       [HandoffReasonType.MANUAL_REQUEST]: '👋 Запрос менеджера',
+      [HandoffReasonType.MEDIA_REQUEST]: '📸 Просьба прислать фото/видео',
     };
 
     return labels[reason.type] ?? reason.type;

@@ -94,6 +94,8 @@ export enum HandoffReasonType {
   OUT_OF_SCOPE = 'out_of_scope',
   TECHNICAL_ISSUE = 'technical_issue',
   MANUAL_REQUEST = 'manual_request',
+  MEDIA_REQUEST = 'media_request',
+  PROFANITY = 'profanity',
 }
 
 export enum HandoffStatus {
@@ -336,6 +338,8 @@ export interface SituationAnalysis {
   urgency: UrgencyLevel;
   recommendations: string[];
   promptInjection?: { detected: boolean; confidence: number; patterns: string[] };
+  mediaRequest?: { detected: boolean; keywords: string[] };
+  profanity?: { detected: boolean; words: string[] };
   metadata?: Record<string, unknown>;
 }
 
@@ -502,20 +506,48 @@ export interface KnowledgeSearchResult {
   snippet: string;
 }
 
+export interface BusinessLocationEntry {
+  id: string;
+  name: string;
+  shortName?: string;
+  subtitle?: string;
+  metro?: string;
+  metroLine?: string;
+  address: string;
+  description?: string;
+  features?: string[];
+  nearby?: string[];
+  pricePerSeat?: number;
+  websiteUrl?: string;
+  matterportTour?: string;
+}
+
+export interface IncludedInPrice {
+  items: { title: string; description: string }[];
+}
+
 export interface BusinessInfo {
   name: string;
   type: string;
   description: string;
   tagline?: string;
   contacts: BusinessContacts;
-  location: BusinessLocation;
-  workingHours: WorkingHours;
-  amenities: string[];
-  features: string[];
-  rules: string[];
-  team: TeamMember[];
+  locations: BusinessLocationEntry[];
+  includedInPrice?: IncludedInPrice;
+  contractTerms?: Record<string, unknown>;
+  pricing?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+  yandexMaps?: string;
+  app?: string;
+  // Legacy fields (backward compat)
+  location?: BusinessLocation;
+  workingHours?: WorkingHours;
+  amenities?: string[];
+  features?: string[];
+  rules?: string[];
+  team?: TeamMember[];
   socialMedia?: SocialMedia;
-  metadata: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface BusinessContacts {

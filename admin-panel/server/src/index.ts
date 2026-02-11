@@ -12,6 +12,7 @@ import knowledgeRoutes from './routes/knowledge-base';
 import dialogRoutes from './routes/dialogs';
 import statusRoutes from './routes/status';
 import knowledgeChatRoutes from './routes/knowledge-chat';
+import officesRoutes from './routes/offices';
 
 const app = express();
 const PORT = parseInt(process.env.ADMIN_PORT || '4000', 10);
@@ -53,11 +54,12 @@ app.use('/api/knowledge/chat', apiLimiter, knowledgeChatRoutes);
 app.use('/api/knowledge', apiLimiter, knowledgeRoutes);
 app.use('/api/dialogs', apiLimiter, dialogRoutes);
 app.use('/api/status', apiLimiter, statusRoutes);
+app.use('/api/admin/offices', apiLimiter, officesRoutes);
 
-// Serve built frontend in production
+// Serve built frontend (base path = /admin/)
 const distPath = path.resolve(__dirname, '../../dist');
-app.use(express.static(distPath));
-app.get('*', (_req, res) => {
+app.use('/admin', express.static(distPath));
+app.get('/admin/*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
