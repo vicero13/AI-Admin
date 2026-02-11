@@ -30,6 +30,7 @@ export interface KnowledgeBaseConfig {
 export interface KnowledgeBaseStats {
   businessInfoLoaded: boolean;
   servicesCount: number;
+  officesCount: number;
   faqCount: number;
   policiesCount: number;
   dialogExamplesCount: number;
@@ -37,6 +38,28 @@ export interface KnowledgeBaseStats {
   lastLoadedAt: number;
   loadErrors: string[];
 }
+
+// Интерфейс офиса из offices.json
+export interface Office {
+  id: string;
+  locationId: string;
+  number: string;
+  capacity: number;
+  area: number;
+  pricePerMonth: number;
+  link?: string;
+  availableFrom: string;
+  status: 'free' | 'rented' | 'maintenance';
+  notes?: string;
+  lastUpdated: number;
+}
+
+// Названия локаций
+const LOCATION_NAMES: Record<string, string> = {
+  'sokol': 'Сокол',
+  'chistye-prudy': 'Чистые пруды',
+  'tsvetnoy': 'Цветной бульвар',
+};
 
 // --- KnowledgeBase Class ---
 
@@ -47,6 +70,7 @@ export class KnowledgeBase {
   private teamInfo: Record<string, unknown> | null = null;
   private metadata: Record<string, unknown> | null = null;
   private services: ServiceInfo[] = [];
+  private offices: Office[] = [];
   private faq: FAQItem[] = [];
   private policies: Policy[] = [];
   private dialogExamples: DialogExample[] = [];
@@ -107,6 +131,10 @@ export class KnowledgeBase {
 
     this.services = (await this.loadJsonFile<ServiceInfo[]>(
       path.join(this.config.basePath, 'services.json'),
+    )) ?? [];
+
+    this.offices = (await this.loadJsonFile<Office[]>(
+      path.join(this.config.basePath, 'offices.json'),
     )) ?? [];
 
     this.faq = (await this.loadJsonFilesFromDir<FAQItem[]>(
@@ -210,6 +238,22 @@ export class KnowledgeBase {
   }
 
   /**
+   * Получить офисы
+   */
+  getOffices(): Office[] {
+    return [...this.offices];
+  }
+
+  /**
+   * Получить KnowledgeItem'ы для ВСЕХ офисов (для принудительной подачи в AI контекст)
+   */
+  getOfficeKnowledgeItems(): KnowledgeItem[] {
+    return this.knowledgeItems.filter(
+      (item) => item.id.startsWith('office-')
+    );
+  }
+
+  /**
    * Получить FAQ
    */
   getFAQ(): FAQItem[] {
@@ -237,6 +281,7 @@ export class KnowledgeBase {
     return {
       businessInfoLoaded: this.businessInfo !== null,
       servicesCount: this.services.length,
+      officesCount: this.offices.length,
       faqCount: this.faq.length,
       policiesCount: this.policies.length,
       dialogExamplesCount: this.dialogExamples.length,
@@ -357,6 +402,84 @@ export class KnowledgeBase {
       });
     }
 
+    // Offices (из offices.json) — ОСНОВНОЙ ИСТОЧНИК ДАННЫХ ОБ ОФИСАХ
+    for (const office of this.offices) {
+      const locationName = LOCATION_NAMES[office.locationId] || office.locationId;
+      const isAvailable = office.status === 'free' && office.availableFrom === 'available';
+      const availabilityText = isAvailable
+        ? 'свободен сейчас'
+        : office.availableFrom !== 'available'
+          ? `свободен с ${office.availableFrom}`
+          : office.status;
+
+      const title = `Офис №${office.number} на ${office.capacity} мест (${locationName})`;
+      const description = `${office.capacity} рабочих мест, ${office.pricePerMonth.toLocaleString('ru-RU')} ₽/мес, ${availabilityText}`;
+
+      // Ключевые слова для поиска
+      const seatsKeywords = [
+        `${office.capacity} человек`,
+        `${office.capacity} сотрудников`,
+        `${office.capacity} мест`,
+        `на ${office.capacity}`,
+        `${office.capacity} чел`,
+      ];
+
+      items.push({
+        id: `office-${office.id}`,
+        type: KnowledgeType.SERVICE,
+        category: KnowledgeCategory.SERVICES,
+        content: {
+          serviceId: office.id,
+          name: title,
+          description: description,
+          category: 'office',
+          pricing: [{
+            amount: office.pricePerMonth,
+            currency: 'RUB',
+            unit: 'месяц',
+          }],
+          available: isAvailable,
+          features: [
+            `${office.capacity} рабочих мест`,
+            availabilityText,
+            office.notes || '',
+          ].filter(Boolean),
+          tags: [locationName.toLowerCase(), 'офис', `${office.capacity} мест`],
+          metadata: {
+            location: office.locationId,
+            locationName: locationName,
+            seats: office.capacity,
+            area: office.area,
+            availableFrom: office.availableFrom,
+            link: office.link,
+            officeNumber: office.number,
+          },
+        },
+        title: title,
+        description: description,
+        tags: [locationName.toLowerCase(), 'офис', 'аренда', `${office.capacity} мест`],
+        keywords: [
+          title.toLowerCase(),
+          locationName.toLowerCase(),
+          office.number.toLowerCase(),
+          'офис',
+          'аренда',
+          `${office.pricePerMonth}`,
+          ...seatsKeywords,
+        ],
+        confidence: 1.0,
+        lastVerified: now,
+        usageCount: 0,
+        metadata: {
+          officeId: office.id,
+          locationId: office.locationId,
+          seats: office.capacity,
+          price: office.pricePerMonth,
+          available: isAvailable,
+        },
+      });
+    }
+
     // FAQ
     for (const faqItem of this.faq) {
       items.push({
@@ -428,15 +551,42 @@ export class KnowledgeBase {
 
   private extractBusinessKeywords(info: BusinessInfo): string[] {
     const keywords: string[] = [
-      info.name.toLowerCase(),
-      info.type.toLowerCase(),
-      ...info.amenities.map((a) => a.toLowerCase()),
-      ...info.features.map((f) => f.toLowerCase()),
-      info.contacts.phone,
-      info.contacts.email,
-      info.location.city.toLowerCase(),
-      info.location.address.toLowerCase(),
-    ];
+      info.name?.toLowerCase(),
+      info.type?.toLowerCase(),
+    ].filter(Boolean) as string[];
+
+    // includedInPrice.items (amenities)
+    if (info.includedInPrice?.items) {
+      for (const item of info.includedInPrice.items) {
+        if (item.title) keywords.push(item.title.toLowerCase());
+      }
+    }
+    // Legacy amenities/features arrays (if present)
+    if (Array.isArray((info as any).amenities)) {
+      keywords.push(...(info as any).amenities.map((a: string) => a.toLowerCase()));
+    }
+    if (Array.isArray((info as any).features)) {
+      keywords.push(...(info as any).features.map((f: string) => f.toLowerCase()));
+    }
+
+    // Locations — addresses, features, metro
+    if (Array.isArray(info.locations)) {
+      for (const loc of info.locations) {
+        if (loc.address) keywords.push(loc.address.toLowerCase());
+        if (loc.metro) keywords.push(loc.metro.toLowerCase());
+        if (loc.name) keywords.push(loc.name.toLowerCase());
+        if (Array.isArray(loc.features)) {
+          keywords.push(...loc.features.map((f: string) => f.toLowerCase()));
+        }
+      }
+    }
+    // Legacy singular location
+    if ((info as any).location?.city) keywords.push((info as any).location.city.toLowerCase());
+    if ((info as any).location?.address) keywords.push((info as any).location.address.toLowerCase());
+
+    if (info.contacts?.phone) keywords.push(info.contacts.phone);
+    if (info.contacts?.email) keywords.push(info.contacts.email);
+
     if (info.tagline) {
       keywords.push(...this.extractWords(info.tagline));
     }

@@ -212,6 +212,9 @@ export class Orchestrator {
       return null;
     }
 
+    // Если приветствие уже отправлено, но сообщение содержало запрос — здесь храним текст приветствия
+    let pendingGreeting: string | null = null;
+
     try {
       // 1. Получить или создать контекст
       const context = await this.contextManager.getContext(conversationId);
@@ -370,26 +373,34 @@ export class Orchestrator {
         }
 
         if (greetingType !== 'none') {
-          // Сразу помечаем, что приветствие запланировано — защита от дублирования
-          if (this.conversationDetector) {
-            this.conversationDetector.markGreetingSent(conversationId);
-          }
-
           const userName = message.metadata?.custom?.firstName as string | undefined
             || context.clientProfile?.name;
           const greeting = await this.greetingService.generateGreeting(userName, freshContext, greetingType);
           if (greeting) {
-            await this.contextManager.addMessage(conversationId, {
-              messageId: `ai-greeting-${Date.now()}`,
-              timestamp: Date.now(),
-              role: MessageRole.ASSISTANT,
-              content: greeting,
-              handledBy: MessageHandler.AI,
-            });
-            return {
-              responseText: greeting,
-              typingDelay: this.humanMimicry.calculateTypingDelay(greeting),
-            };
+            // Проверяем, содержит ли сообщение запрос помимо приветствия
+            const textWithoutGreeting = this.stripGreetingFromText(text);
+            if (textWithoutGreeting.length < 5) {
+              // Чистое приветствие — помечаем как отправленное и возвращаем
+              if (this.conversationDetector) {
+                this.conversationDetector.markGreetingSent(conversationId);
+              }
+              await this.contextManager.addMessage(conversationId, {
+                messageId: `ai-greeting-${Date.now()}`,
+                timestamp: Date.now(),
+                role: MessageRole.ASSISTANT,
+                content: greeting,
+                handledBy: MessageHandler.AI,
+              });
+              return {
+                responseText: greeting,
+                typingDelay: this.humanMimicry.calculateTypingDelay(greeting),
+              };
+            }
+
+            // Сообщение содержит и приветствие, и запрос — сохраняем greeting как pending.
+            // markGreetingSent вызовется позже, когда greeting реально будет отправлен.
+            this.logger.info(`[Step 6] Greeting + request detected: "${textWithoutGreeting.substring(0, 50)}"`);
+            pendingGreeting = greeting;
           }
         }
       }
@@ -474,12 +485,60 @@ export class Orchestrator {
         }
       }
 
+      // ★ 7.5. Проверка на мат/оскорбления — немедленный хэндофф
+      const profanityCheck = this.situationDetector.detectProfanity(text);
+      if (profanityCheck.detected) {
+        this.logger.info(`[Step 7.5] PROFANITY detected: ${profanityCheck.words.join(', ')}`);
+
+        // Отправить скрипт "Что?" / "Могу ли чем-то помочь" через strangeQuestionHandler
+        const scriptMessages: { text: string; delayMs: number }[] = [];
+
+        // Если есть pending greeting — добавляем его первым
+        if (pendingGreeting) {
+          scriptMessages.push({ text: pendingGreeting, delayMs: 0 });
+          if (this.conversationDetector) {
+            this.conversationDetector.markGreetingSent(conversationId);
+          }
+        }
+
+        if (this.strangeQuestionHandler?.isEnabled()) {
+          const result = this.strangeQuestionHandler.handleStrange(conversationId);
+          scriptMessages.push(...result.messages);
+        } else {
+          scriptMessages.push({ text: 'Что?', delayMs: 0 });
+          scriptMessages.push({ text: 'Могу ли чем-то помочь, что касается наших офисов?)', delayMs: 5000 });
+        }
+
+        // Инициировать хэндофф
+        const handoffReason: HandoffReason = {
+          type: HandoffReasonType.PROFANITY,
+          description: `⚠️ Обнаружен мат/оскорбления: ${profanityCheck.words.join(', ')}`,
+          severity: RiskLevel.HIGH,
+          detectedBy: 'profanity_detector',
+        };
+        await this.handoffSystem.initiateHandoff(conversationId, handoffReason, updatedContext);
+        await this.contextManager.updateContext(conversationId, {
+          mode: ConversationMode.HUMAN,
+          requiresHandoff: true,
+        });
+
+        return this.buildMultiMessageResponse(scriptMessages);
+      }
+
       // ★ 8. Проверка странных вопросов
       if (this.strangeQuestionHandler?.isEnabled()) {
         // Сначала проверить deferToViewing
         if (this.strangeQuestionHandler.isDeferToViewing(text)) {
           const result = this.strangeQuestionHandler.handleDeferToViewing();
-          return this.buildMultiMessageResponse(result.messages);
+          const allMessages: { text: string; delayMs: number }[] = [];
+          if (pendingGreeting) {
+            allMessages.push({ text: pendingGreeting, delayMs: 0 });
+            if (this.conversationDetector) {
+              this.conversationDetector.markGreetingSent(conversationId);
+            }
+          }
+          allMessages.push(...result.messages);
+          return this.buildMultiMessageResponse(allMessages);
         }
 
         const isStrange = await this.strangeQuestionHandler.isStrangeQuestion(text, updatedContext);
@@ -498,7 +557,18 @@ export class Orchestrator {
               requiresHandoff: true,
             });
           }
-          return this.buildMultiMessageResponse(result.messages);
+
+          // Если есть pending greeting — добавляем его перед скриптом
+          const allMessages: { text: string; delayMs: number }[] = [];
+          if (pendingGreeting) {
+            allMessages.push({ text: pendingGreeting, delayMs: 0 });
+            if (this.conversationDetector) {
+              this.conversationDetector.markGreetingSent(conversationId);
+            }
+          }
+          allMessages.push(...result.messages);
+
+          return this.buildMultiMessageResponse(allMessages);
         } else {
           this.strangeQuestionHandler.resetCount(conversationId);
         }
@@ -524,6 +594,33 @@ export class Orchestrator {
       // 12. Найти релевантные знания
       const knowledgeResults = await this.knowledgeBase.search(text, 5);
       const relevantItems = knowledgeResults.map((r) => r.item);
+
+      // 12.1. ВСЕГДА включаем ВСЕ офисы в контекст (чтобы AI не галлюцинировал)
+      const allOfficeItems = this.knowledgeBase.getOfficeKnowledgeItems();
+      const existingIds = new Set(relevantItems.map((i) => i.id));
+      for (const officeItem of allOfficeItems) {
+        if (!existingIds.has(officeItem.id)) {
+          relevantItems.push(officeItem);
+        }
+      }
+
+      // Логируем что нашли в базе знаний
+      this.logger.info(`[Step 12] Knowledge search for "${text.substring(0, 50)}":`);
+      if (knowledgeResults.length === 0) {
+        this.logger.info(`  → Ничего не найдено в базе знаний`);
+      } else {
+        for (const result of knowledgeResults) {
+          const content = result.item.content as Record<string, unknown>;
+          const metadata = content?.metadata as Record<string, unknown> | undefined;
+          const price = (content?.pricing as Array<Record<string, unknown>>)?.[0]?.amount;
+          const seats = metadata?.seats;
+          this.logger.info(
+            `  → [${result.item.type}] "${result.item.title}" (relevance: ${result.relevance.toFixed(2)})` +
+            (seats ? ` | Мест: ${seats}` : '') +
+            (price ? ` | Цена: ${price}₽` : '')
+          );
+        }
+      }
 
       // 12.5. Проверить ресурсы — нужно ли отправить файл/ссылку
       let attachment: ResourceAttachment | undefined;
@@ -708,6 +805,78 @@ export class Orchestrator {
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 
+      // 15.5. Проверить текст AI на фразы handoff — если AI обещает переключить,
+      // но requiresHandoff === false, принудительно вызываем handoff
+      const handoffPhrases = [
+        'переключу на менеджера',
+        'переключу на коллег',
+        'переключу на коллегу',
+        'переведу на менеджера',
+        'передам коллег',
+        'передам менеджер',
+        'подключу коллег',
+        'подключу менеджер',
+        'свяжу с менеджером',
+        'свяжу с коллег',
+        'уточню у коллег',
+        'спрошу у коллег',
+      ];
+      const responseTextLower = aiResponse.text.toLowerCase();
+      const detectedHandoffPhrase = handoffPhrases.find(phrase => responseTextLower.includes(phrase));
+      if (detectedHandoffPhrase) {
+        this.logger.info(`[Step 15.5] AI text contains handoff phrase: "${detectedHandoffPhrase}" — triggering handoff`);
+
+        const handoffReason: HandoffReason = {
+          type: HandoffReasonType.LOW_CONFIDENCE,
+          description: `AI сам предложил переключить на менеджера: "${detectedHandoffPhrase}"`,
+          severity: RiskLevel.MEDIUM,
+          detectedBy: 'orchestrator_text_detection',
+        };
+
+        await this.handoffSystem.initiateHandoff(conversationId, handoffReason, updatedContext);
+        await this.contextManager.updateContext(conversationId, {
+          mode: ConversationMode.HUMAN,
+          requiresHandoff: true,
+        });
+
+        // Отправляем текст AI как есть (он уже содержит фразу про менеджера)
+        const responseText = this.sanitizeResponse(aiResponse.text);
+        await this.contextManager.addMessage(conversationId, {
+          messageId: `ai-handoff-text-${Date.now()}`,
+          timestamp: Date.now(),
+          role: MessageRole.ASSISTANT,
+          content: responseText,
+          handledBy: MessageHandler.AI,
+        });
+
+        // Если было приветствие + запрос → приветствие + ответ AI как additional
+        if (pendingGreeting) {
+          if (this.conversationDetector) {
+            this.conversationDetector.markGreetingSent(conversationId);
+          }
+          await this.contextManager.addMessage(conversationId, {
+            messageId: `ai-greeting-${Date.now()}`,
+            timestamp: Date.now(),
+            role: MessageRole.ASSISTANT,
+            content: pendingGreeting,
+            handledBy: MessageHandler.AI,
+          });
+          return {
+            responseText: pendingGreeting,
+            typingDelay: this.humanMimicry.calculateTypingDelay(pendingGreeting),
+            additionalMessages: [{
+              text: responseText,
+              delayMs: 1500 + Math.random() * 2000,
+            }],
+          };
+        }
+
+        return {
+          responseText,
+          typingDelay: this.humanMimicry.calculateTypingDelay(responseText),
+        };
+      }
+
       // 16. Применить Human Mimicry
       let responseText = aiResponse.text;
       responseText = await this.humanMimicry.makeNatural(responseText, {
@@ -779,6 +948,29 @@ export class Orchestrator {
         confidence: aiResponse.confidence,
         intent: aiResponse.detectedIntent,
       });
+
+      // Если было приветствие + запрос — вернём greeting как основное, AI-ответ как additional
+      if (pendingGreeting) {
+        if (this.conversationDetector) {
+          this.conversationDetector.markGreetingSent(conversationId);
+        }
+        await this.contextManager.addMessage(conversationId, {
+          messageId: `ai-greeting-${Date.now()}`,
+          timestamp: Date.now(),
+          role: MessageRole.ASSISTANT,
+          content: pendingGreeting,
+          handledBy: MessageHandler.AI,
+        });
+        return {
+          responseText: pendingGreeting,
+          typingDelay: this.humanMimicry.calculateTypingDelay(pendingGreeting),
+          attachment,
+          additionalMessages: [{
+            text: responseText,
+            delayMs: 1500 + Math.random() * 2000,
+          }],
+        };
+      }
 
       return { responseText, typingDelay, attachment };
     } catch (error) {
@@ -921,6 +1113,66 @@ export class Orchestrator {
     // Убедиться что первая буква заглавная
     if (result.length > 0) {
       result = result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    return result.trim();
+  }
+
+  /**
+   * Убрать приветствие из пользовательского сообщения, чтобы определить,
+   * содержит ли оно запрос помимо приветствия.
+   * Возвращает текст без приветственных слов.
+   */
+  /**
+   * Конвертация текста из английской раскладки в русскую.
+   */
+  private convertEnToRu(text: string): string {
+    const enToRu: Record<string, string> = {
+      'q': 'й', 'w': 'ц', 'e': 'у', 'r': 'к', 't': 'е', 'y': 'н', 'u': 'г',
+      'i': 'ш', 'o': 'щ', 'p': 'з', '[': 'х', ']': 'ъ', 'a': 'ф', 's': 'ы',
+      'd': 'в', 'f': 'а', 'g': 'п', 'h': 'р', 'j': 'о', 'k': 'л', 'l': 'д',
+      ';': 'ж', "'": 'э', 'z': 'я', 'x': 'ч', 'c': 'с', 'v': 'м', 'b': 'и',
+      'n': 'т', 'm': 'ь', ',': 'б', '.': 'ю', '/': '.',
+    };
+    return text.toLowerCase().split('').map(c => enToRu[c] || c).join('');
+  }
+
+  /**
+   * Проверка, является ли текст приветствием (включая английскую раскладку)
+   */
+  private isGreetingOnly(text: string): boolean {
+    const greetingWords = [
+      'привет', 'приветствую', 'здравствуйте', 'здрасте',
+      'добрый день', 'добрый вечер', 'доброе утро',
+      'хай', 'салют', 'hello', 'hi',
+    ];
+    const lower = text.toLowerCase().replace(/[!.,?\s]+/g, ' ').trim();
+    const converted = this.convertEnToRu(lower);
+    return greetingWords.some(g => lower === g || converted === g);
+  }
+
+  private stripGreetingFromText(text: string): string {
+    // Сначала проверяем, не является ли весь текст приветствием в неправильной раскладке
+    if (this.isGreetingOnly(text)) {
+      return '';
+    }
+
+    let result = text;
+
+    const greetingPatterns = [
+      /^добрый\s+день[!.,]?\s*/i,
+      /^добрый\s+вечер[!.,]?\s*/i,
+      /^доброе\s+утро[!.,]?\s*/i,
+      /^здравствуйте[!.,]?\s*/i,
+      /^привет[!.,]?\s*/i,
+      /^приветствую[!.,]?\s*/i,
+      /^хай[!.,]?\s*/i,
+      /^hello[!.,]?\s*/i,
+      /^hi[!.,]?\s*/i,
+    ];
+
+    for (const pattern of greetingPatterns) {
+      result = result.replace(pattern, '');
     }
 
     return result.trim();

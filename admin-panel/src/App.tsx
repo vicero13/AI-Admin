@@ -4,6 +4,7 @@ import DashboardPage from './pages/DashboardPage';
 import ConfigPage from './pages/ConfigPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
 import DialogUploadPage from './pages/DialogUploadPage';
+import OfficesPage from './pages/OfficesPage';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/config" element={<ConfigPage />} />
         <Route path="/knowledge" element={<KnowledgeBasePage />} />
         <Route path="/dialogs" element={<DialogUploadPage />} />
+        <Route path="/offices" element={<OfficesPage />} />
       </Routes>
     </Layout>
   );

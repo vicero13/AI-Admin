@@ -137,6 +137,29 @@ const ANGRY_KEYWORDS: string[] = [
   'роспотребнадзор',
 ];
 
+// Мат и оскорбления — немедленный хэндофф
+const PROFANITY_KEYWORDS: string[] = [
+  'пидор', 'пидар', 'пидр',
+  'блять', 'бля',
+  'сука', 'сучка', 'сучар',
+  'хуй', 'хуе', 'хуё', 'хуи', 'нахуй', 'нахуя', 'похуй',
+  'пизд', 'пизда', 'пиздец', 'пиздёж',
+  'ебать', 'ебан', 'ёбан', 'заебал', 'заебись', 'уёб', 'долбоёб', 'долбоеб',
+  'мудак', 'мудила', 'мудозвон',
+  'говно', 'говна', 'говнюк',
+  'дебил', 'дебилы',
+  'урод', 'уроды',
+  'тварь', 'твари',
+  'дрочен', 'дроч',
+  'залупа',
+  'шлюха', 'шалава',
+  'чмо', 'чмошн',
+  'лох', 'лошар',
+  'идиот', 'идиоты',
+  'придурок', 'придурки',
+  'даун', 'дауны',
+];
+
 const FRUSTRATED_KEYWORDS: string[] = [
   'не понимаете',
   'уже спрашивал',
@@ -167,6 +190,24 @@ const POSITIVE_KEYWORDS: string[] = [
   'рекомендую',
 ];
 
+// Запросы фото/видео — триггер для handoff
+const MEDIA_REQUEST_KEYWORDS: string[] = [
+  'фото',
+  'фотограф',
+  'фотки',
+  'видео',
+  'видеообзор',
+  'снимки',
+  'картинки',
+  'посмотреть как выглядит',
+  'покажите',
+  'прислать фото',
+  'скинуть фото',
+  'скиньте фото',
+  'можно фото',
+  'есть фото',
+];
+
 export class SituationDetector {
   private thresholds: DetectionThresholds;
 
@@ -186,6 +227,8 @@ export class SituationDetector {
     const emotionalState = this.detectEmotionalState(text, context.messageHistory);
     const confidence = this.assessConfidence(text, '');
     const promptInjection = this.detectPromptInjection(text);
+    const mediaRequest = this.detectMediaRequest(text);
+    const profanity = this.detectProfanity(text);
 
     const overallRisk = this.computeOverallRisk(aiProbing, complexity, emotionalState, confidence);
     const urgency = this.computeUrgency(emotionalState, complexity, aiProbing);
@@ -202,7 +245,9 @@ export class SituationDetector {
       requiresHandoff: false,
       urgency,
       recommendations: [],
-      promptInjection, // Добавляем результат детекции
+      promptInjection,
+      mediaRequest,
+      profanity,
     };
 
     analysis.requiresHandoff = this.shouldHandoff(analysis);
@@ -621,9 +666,54 @@ export class SituationDetector {
   }
 
   /**
+   * Детекция запроса фото/видео — триггер для handoff
+   */
+  detectProfanity(message: string): { detected: boolean; words: string[] } {
+    const lower = message.toLowerCase();
+    const foundWords: string[] = [];
+
+    for (const word of PROFANITY_KEYWORDS) {
+      if (lower.includes(word)) {
+        foundWords.push(word);
+      }
+    }
+
+    return {
+      detected: foundWords.length > 0,
+      words: foundWords,
+    };
+  }
+
+  detectMediaRequest(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+
+    for (const keyword of MEDIA_REQUEST_KEYWORDS) {
+      if (lower.includes(keyword.toLowerCase())) {
+        foundKeywords.push(keyword);
+      }
+    }
+
+    return {
+      detected: foundKeywords.length > 0,
+      keywords: foundKeywords,
+    };
+  }
+
+  /**
    * Определяет, нужен ли хэндофф на основе анализа ситуации и порогов.
    */
   shouldHandoff(analysis: SituationAnalysis): boolean {
+    // Мат/оскорбления — ОБЯЗАТЕЛЬНЫЙ хэндофф
+    if (analysis.profanity?.detected) {
+      return true;
+    }
+
+    // Запрос фото/видео — ОБЯЗАТЕЛЬНЫЙ хэндофф (менеджер должен прислать медиа)
+    if (analysis.mediaRequest?.detected) {
+      return true;
+    }
+
     // Prompt injection — ОБЯЗАТЕЛЬНЫЙ хэндофф
     if (analysis.promptInjection?.detected) {
       return true;
@@ -661,12 +751,32 @@ export class SituationDetector {
    * Формирует причину хэндоффа на основе анализа.
    */
   getHandoffReason(analysis: SituationAnalysis): HandoffReason {
-    // Priority order: prompt injection > emotional > AI probing > complexity > low confidence
+    // Priority order: profanity > media request > prompt injection > emotional > AI probing > complexity > low confidence
+
+    // Мат/оскорбления — немедленный хэндофф
+    if (analysis.profanity?.detected) {
+      return {
+        type: HandoffReasonType.PROFANITY,
+        description: `⚠️ Обнаружен мат/оскорбления в сообщении клиента. Требуется менеджер.`,
+        severity: RiskLevel.HIGH,
+        detectedBy: 'SituationDetector.detectProfanity',
+      };
+    }
+
+    // Запрос фото/видео — нужен менеджер для отправки медиа
+    if (analysis.mediaRequest?.detected) {
+      return {
+        type: HandoffReasonType.MEDIA_REQUEST,
+        description: `📸 Клиент просит фото/видео: ${analysis.mediaRequest.keywords.join(', ')}. Нужно отправить медиа-материалы.`,
+        severity: RiskLevel.LOW,
+        detectedBy: 'SituationDetector.detectMediaRequest',
+      };
+    }
 
     // Prompt injection — ВЫСШИЙ ПРИОРИТЕТ
     if (analysis.promptInjection?.detected) {
       return {
-        type: HandoffReasonType.AI_PROBING, // Используем AI_PROBING как ближайший тип
+        type: HandoffReasonType.AI_PROBING,
         description: `⚠️ ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ: обнаружена попытка манипуляции / prompt injection. Паттерны: ${analysis.promptInjection.patterns.join(', ')}`,
         severity: RiskLevel.HIGH,
         detectedBy: 'SituationDetector.detectPromptInjection',

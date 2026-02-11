@@ -5,15 +5,25 @@ import { v4 as uuidv4 } from 'uuid';
 import { readJsonFile, writeJsonFile } from '../services/knowledge-service';
 import type { AdminDependencies } from '../index';
 
-interface Office {
+// Локации коворкингов
+export const LOCATIONS = [
+  { id: 'sokol', name: 'Сокол' },
+  { id: 'chistye-prudy', name: 'Чистые пруды' },
+  { id: 'tsvetnoy', name: 'Цветной бульвар' },
+] as const;
+
+export type LocationId = typeof LOCATIONS[number]['id'];
+
+export interface Office {
   id: string;
-  number: string;
-  capacity: number;
-  pricePerMonth: number;
+  locationId: LocationId;       // Объект (локация)
+  number: string;               // Номер офиса
+  capacity: number;             // Кол-во рабочих мест
+  area: number;                 // Квадратура (м²)
+  pricePerMonth: number;        // Цена (₽/мес)
+  link?: string;                // Ссылка (ЦИАН и т.д.)
+  availableFrom: string;        // Дата освобождения (ISO date или 'available')
   status: 'free' | 'rented' | 'maintenance';
-  amenities: string[];
-  floor: number;
-  size: number;
   notes?: string;
   lastUpdated: number;
 }
@@ -35,6 +45,11 @@ function saveOffices(basePath: string, offices: Office[]): void {
 export function createOfficesRouter(deps: AdminDependencies): Router {
   const router = Router();
   const bp = deps.knowledgeBasePath;
+
+  // Get locations list
+  router.get('/locations', (_req: Request, res: Response) => {
+    res.json(LOCATIONS);
+  });
 
   // Get all offices
   router.get('/', (_req: Request, res: Response) => {
@@ -62,13 +77,14 @@ export function createOfficesRouter(deps: AdminDependencies): Router {
       const offices = loadOffices(bp);
       const newOffice: Office = {
         id: uuidv4().slice(0, 8),
+        locationId: req.body.locationId || 'sokol',
         number: req.body.number || '',
         capacity: req.body.capacity || 1,
+        area: req.body.area || 0,
         pricePerMonth: req.body.pricePerMonth || 0,
+        link: req.body.link || '',
+        availableFrom: req.body.availableFrom || 'available',
         status: req.body.status || 'free',
-        amenities: req.body.amenities || [],
-        floor: req.body.floor || 1,
-        size: req.body.size || 0,
         notes: req.body.notes,
         lastUpdated: Date.now(),
       };

@@ -118,7 +118,7 @@ handoff:
 telegram:
   webhook:
     path: /webhook/telegram
-knowledgeBasePath: ./knowledge-base
+knowledgeBasePath: ../knowledge-base
 redis:
   enabled: false
   host: localhost
