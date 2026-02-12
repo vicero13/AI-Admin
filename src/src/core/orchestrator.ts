@@ -805,32 +805,33 @@ export class Orchestrator {
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 
-      // 15.5. Проверить текст AI на фразы handoff — если AI обещает переключить,
-      // но requiresHandoff === false, принудительно вызываем handoff
-      const handoffPhrases = [
-        'переключу на менеджера',
-        'переключу на коллег',
-        'переключу на коллегу',
-        'переведу на менеджера',
-        'передам коллег',
-        'передам менеджер',
-        'подключу коллег',
-        'подключу менеджер',
-        'свяжу с менеджером',
-        'свяжу с коллег',
-        'уточню у коллег',
-        'спрошу у коллег',
-      ];
+      // 15.5. Fallback: если AI забыл маркер [HANDOFF], но текст содержит
+      // обещания уточнить/переключить/узнать — принудительно вызываем handoff
       const responseTextLower = aiResponse.text.toLowerCase();
-      const detectedHandoffPhrase = handoffPhrases.find(phrase => responseTextLower.includes(phrase));
+      const handoffPatterns = [
+        /переключу\s+(на\s+)?(менеджер|коллег)/,
+        /переведу\s+(на\s+)?(менеджер|коллег)/,
+        /передам\s+(менеджер|коллег)/,
+        /подключу\s+(менеджер|коллег)/,
+        /свяжу\s+с\s+(менеджер|коллег)/,
+        /уточню.{0,30}(у коллег|информацию|и вернусь|и сообщу|и напишу)/,
+        /узнаю.{0,30}(у коллег|и вернусь|и сообщу|и напишу)/,
+        /спрошу.{0,30}(у коллег|и вернусь|и сообщу|и напишу)/,
+        /вернусь\s+с\s+ответом/,
+        /вернусь\s+к\s+вам/,
+        /сейчас\s+(уточню|узнаю|спрошу|разберусь)/,
+        /минуточку.{0,20}(уточню|узнаю|спрошу|разберусь)/,
+        /секундочку.{0,20}(уточню|узнаю|спрошу|разберусь)/,
+      ];
+      const detectedHandoffPhrase = handoffPatterns.find(pattern => pattern.test(responseTextLower));
       if (detectedHandoffPhrase) {
-        this.logger.info(`[Step 15.5] AI text contains handoff phrase: "${detectedHandoffPhrase}" — triggering handoff`);
+        this.logger.info(`[Step 15.5] AI text matches handoff pattern: ${detectedHandoffPhrase} — triggering handoff`);
 
         const handoffReason: HandoffReason = {
           type: HandoffReasonType.LOW_CONFIDENCE,
-          description: `AI сам предложил переключить на менеджера: "${detectedHandoffPhrase}"`,
+          description: `AI текст содержит обещание уточнить/переключить (fallback detection)`,
           severity: RiskLevel.MEDIUM,
-          detectedBy: 'orchestrator_text_detection',
+          detectedBy: 'orchestrator_text_pattern_detection',
         };
 
         await this.handoffSystem.initiateHandoff(conversationId, handoffReason, updatedContext);
@@ -1147,7 +1148,8 @@ export class Orchestrator {
       'хай', 'салют', 'hello', 'hi',
     ];
     const lower = text.toLowerCase().replace(/[!.,?\s]+/g, ' ').trim();
-    const converted = this.convertEnToRu(lower);
+    // Конвертация СНАЧАЛА (до очистки пунктуации, т.к. , = б, . = ю в раскладке)
+    const converted = this.convertEnToRu(text.toLowerCase()).replace(/[!.,?\s]+/g, ' ').trim();
     return greetingWords.some(g => lower === g || converted === g);
   }
 
