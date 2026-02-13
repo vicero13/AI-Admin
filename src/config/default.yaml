@@ -219,10 +219,12 @@ conversation:
 
 responseDelays:
   enabled: true
-  readMin: 8000
-  readMax: 12000
-  typingMin: 25000
-  typingMax: 40000
+  typingShowMin: 5000        # показать "печатает" через 5-10 сек
+  typingShowMax: 10000
+  typingMin: 1000            # набор обычного ответа: 1-20 сек (зависит от длины)
+  typingMax: 20000
+  greetingTypingMin: 3000    # набор приветствия: 3-5 сек
+  greetingTypingMax: 5000
   typingRefreshInterval: 5000
 
 greetings:

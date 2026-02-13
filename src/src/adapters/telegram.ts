@@ -89,21 +89,33 @@ export class TelegramAdapter {
       await this.setWebHookWithRetry(this.webhookConfig.url, webhookOptions, maxRetries);
       log.info('Webhook configured', { url: this.webhookConfig.url });
     } else {
+      const allowedUpdates = [
+        'message',
+        'edited_message',
+        'business_connection',
+        'business_message',
+        'edited_business_message',
+        'deleted_business_messages',
+      ];
+
+      // Сначала создаём бот без polling чтобы удалить webhook
+      this.bot = new TelegramBot(this.token, { polling: false });
+      try {
+        await this.bot.deleteWebHook();
+        log.info('Webhook deleted before starting polling');
+      } catch (e) {
+        log.warn('Could not delete webhook (might not be set)', { error: String(e) });
+      }
+      // Закрываем и пересоздаём с polling + allowed_updates
+      await this.bot.close().catch(() => {});
       this.bot = new TelegramBot(this.token, {
         polling: {
           params: {
-            allowed_updates: [
-              'message',
-              'edited_message',
-              'business_connection',
-              'business_message',
-              'edited_business_message',
-              'deleted_business_messages',
-            ],
+            allowed_updates: JSON.stringify(allowedUpdates) as any,
           },
         },
       });
-      log.info('Initialized with polling (allowed_updates includes deleted_business_messages)');
+      log.info('Initialized with polling', { allowed_updates: allowedUpdates });
     }
 
     this.setupListeners();

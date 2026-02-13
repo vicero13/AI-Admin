@@ -433,13 +433,53 @@ async function main() {
   // Очередь отправки — гарантирует что ответы уходят в порядке получения сообщений
   const sendQueues: Map<string, Promise<void>> = new Map();
 
+  // Ранний typing indicator: показываем "печатает" через 5-10с,
+  // пока orchestrator ещё ждёт batch (30с) и обрабатывает AI.
+  // После первого показа обновляем каждые 5с чтобы typing не исчезал.
+  const earlyTypingState: Map<string, { initialTimer: ReturnType<typeof setTimeout>; refreshInterval?: ReturnType<typeof setInterval> }> = new Map();
+
   telegramAdapter.setMessageHandler(async (message) => {
     try {
+      const businessConnectionId = TelegramAdapter.extractBusinessConnectionId(message);
+
+      // Запускаем ранний typing indicator (через 5-10с)
+      // Каждое новое сообщение сбрасывает таймер (как и batch в orchestrator)
+      const existingState = earlyTypingState.get(message.conversationId);
+      if (existingState) {
+        clearTimeout(existingState.initialTimer);
+        if (existingState.refreshInterval) clearInterval(existingState.refreshInterval);
+        earlyTypingState.delete(message.conversationId);
+      }
+      if (responseDelayService?.isEnabled()) {
+        const typingShowDelay = 5000 + Math.floor(Math.random() * 5001); // 5-10с
+        const state: { initialTimer: ReturnType<typeof setTimeout>; refreshInterval?: ReturnType<typeof setInterval> } = {
+          initialTimer: setTimeout(async () => {
+            // Первый typing indicator
+            try {
+              await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+            } catch { /* ignore */ }
+            // Обновляем каждые 5с
+            state.refreshInterval = setInterval(async () => {
+              try {
+                await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+              } catch { /* ignore */ }
+            }, 5000);
+          }, typingShowDelay),
+        };
+        earlyTypingState.set(message.conversationId, state);
+      }
+
       const result = await orchestrator.handleIncomingMessage(message);
 
-      if (result) {
-        const businessConnectionId = TelegramAdapter.extractBusinessConnectionId(message);
+      // Очистить ранний typing state (timer + interval)
+      const pendingState = earlyTypingState.get(message.conversationId);
+      if (pendingState) {
+        clearTimeout(pendingState.initialTimer);
+        if (pendingState.refreshInterval) clearInterval(pendingState.refreshInterval);
+        earlyTypingState.delete(message.conversationId);
+      }
 
+      if (result) {
         // Ждём завершения предыдущей отправки для этого пользователя
         const prevSend = sendQueues.get(message.conversationId);
 
@@ -452,7 +492,9 @@ async function main() {
               message.conversationId,
               businessConnectionId,
               message.content.text || '',
-              result.responseText
+              result.responseText,
+              result.isGreeting,
+              result.firstMessageReceivedAt
             );
           } else {
             await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);

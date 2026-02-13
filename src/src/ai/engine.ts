@@ -845,10 +845,29 @@ export class AIEngine {
       '6. ВОПРОС ВНЕ БАЗЫ ЗНАНИЙ:',
       '   → "Минуту, уточню у коллег" → handoff менеджеру',
       '',
+      '7. БЮДЖЕТ КЛИЕНТА:',
+      '   → Показывай ВСЕ офисы, которые вписываются в бюджет, включая офисы с бОльшим количеством мест',
+      '   → Пример: клиент ищет на 5 человек, бюджет до 200 000 — показывай и офис на 5 мест за 190 000, И офис на 8 мест за 200 000',
+      '   → Клиент может захотеть больше места за ту же цену',
+      '',
       '⚠️ ВАЖНО:',
       '- "Нет подходящего офиса" — это ОТВЕТ клиенту, НЕ причина для handoff',
       '- Просьба прислать фото/видео — ПРИЧИНА для handoff ТОЛЬКО если ссылки на медиа нет в данных офиса',
       '- Всегда добавляй "сейчас" / "на данный момент" при разговоре о наличии',
+      '- НЕ спрашивай "что больше подходит по расположению?" если все варианты на ОДНОЙ и той же локации — это бессмысленно',
+      '- НЕ противопоставляй "центр" и "экономию". НЕ используй слово "экономия" применительно к локациям. Все наши локации — качественные пространства',
+      '',
+      '=== СТИЛЬ ОБЩЕНИЯ ===',
+      '',
+      '⚠️ НЕ задавай вопрос в каждом сообщении! Это выглядит навязчиво.',
+      'Вопрос уместен только когда:',
+      '- Ты предложил варианты и хочешь узнать предпочтения (1 раз)',
+      '- Тебе нужна информация от клиента для подбора',
+      '- Клиент долго молчит (follow-up)',
+      '',
+      'НЕ заканчивай каждое сообщение вопросом. Если клиент уже дал информацию — просто дай ответ.',
+      'Плохо: "Офис №311... Какой больше подходит?" → "Домик №5... Что по расположению?" → "Вот ссылка... Когда подъехать?"',
+      'Хорошо: "Офис №311... Какой больше подходит по размеру?" → "Домик №5, вот ссылка на ЦИАН" → (ждём ответа клиента)',
       ''
     );
 
@@ -905,10 +924,10 @@ export class AIEngine {
     const dialogItems = knowledgeItems.filter((i) => i.type === KnowledgeType.DIALOG_EXAMPLE);
 
     if (businessItems.length > 0) {
-      sections.push(
-        '--- Информация о бизнесе ---',
-        ...businessItems.map((i) => `${i.title}: ${JSON.stringify(i.content)}`)
-      );
+      sections.push('--- Информация о бизнесе ---');
+      for (const item of businessItems) {
+        sections.push(this.formatBusinessInfo(item.content as Record<string, unknown>));
+      }
     }
 
     if (serviceItems.length > 0) {
@@ -941,9 +960,20 @@ export class AIEngine {
           const availableFrom = metadata?.availableFrom;
           const link = metadata?.link as string | undefined;
 
-          let availability = 'свободен';
+          let availability = 'свободен сейчас';
           if (availableFrom && availableFrom !== 'available') {
-            availability = `свободен с ${availableFrom}`;
+            const d = new Date(availableFrom as string);
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (!isNaN(d.getTime()) && d > today) {
+              const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+              const day = d.getDate();
+              const month = months[d.getMonth()];
+              availability = d.getFullYear() === now.getFullYear()
+                ? `свободен с ${day} ${month}`
+                : `свободен с ${day} ${month} ${d.getFullYear()}`;
+            }
+            // Если дата в прошлом — оставляем "свободен сейчас"
           }
 
           const mediaLinks = metadata?.mediaLinks as Record<string, string> | undefined;
@@ -1019,6 +1049,112 @@ export class AIEngine {
     }
 
     return sections.join('\n');
+  }
+
+  /**
+   * Форматирует business-info в читаемый текст для AI.
+   * Вместо JSON.stringify — структурированный текст с парковкой, юрадресом и т.д.
+   */
+  private formatBusinessInfo(info: Record<string, unknown>): string {
+    const lines: string[] = [];
+
+    if (info.name) lines.push(`Компания: ${info.name}`);
+    if (info.description) lines.push(`${info.description}`);
+    lines.push('');
+
+    // Что входит в стоимость
+    const included = info.includedInPrice as { items?: Array<{ title: string; description: string }> } | undefined;
+    if (included?.items) {
+      lines.push('ЧТО ВХОДИТ В СТОИМОСТЬ АРЕНДЫ:');
+      for (const item of included.items) {
+        lines.push(`  ✅ ${item.title} — ${item.description}`);
+      }
+      lines.push('');
+    }
+
+    // Общие особенности
+    const common = info.commonFeatures as Record<string, string> | undefined;
+    if (common) {
+      lines.push('ОБЩИЕ ОСОБЕННОСТИ (все локации):');
+      for (const [key, value] of Object.entries(common)) {
+        if (value) lines.push(`  • ${value}`);
+      }
+      lines.push('');
+    }
+
+    // Локации с деталями
+    const locations = info.locations as Array<Record<string, unknown>> | undefined;
+    if (locations) {
+      lines.push('ЛОКАЦИИ:');
+      for (const loc of locations) {
+        lines.push(`\n📍 ${loc.name} — ${loc.address}`);
+        if (loc.metro) lines.push(`  🚇 Метро: ${loc.metro}`);
+        if (loc.subtitle) lines.push(`  ${loc.subtitle}`);
+
+        // Парковка
+        const parking = loc.parking as { description?: string } | undefined;
+        if (parking?.description) {
+          lines.push(`  🅿️ Парковка: ${parking.description}`);
+        }
+
+        // Юридический адрес
+        if (loc.legalAddress) {
+          lines.push(`  📋 Юридический адрес: ${loc.legalAddress}`);
+        }
+
+        // Налогообложение
+        if (loc.taxation) {
+          lines.push(`  💼 Налогообложение: ${loc.taxation}`);
+        }
+
+        // Переговорные
+        const rooms = loc.meetingRooms as Array<{ capacity: number; description: string }> | undefined;
+        if (rooms) {
+          lines.push(`  🤝 Переговорные: ${rooms.map(r => `на ${r.capacity} чел`).join(', ')}`);
+        }
+
+        // Администратор
+        if (loc.administrator) {
+          lines.push(`  👤 Администратор: ${loc.administrator}`);
+        }
+
+        // Интернет
+        if (loc.internetExtra) {
+          lines.push(`  📶 Интернет доп.: ${loc.internetExtra}`);
+        }
+
+        // Целый домик (Сокол)
+        if (loc.wholeHouse) {
+          lines.push(`  🏠 Целый домик: ${loc.wholeHouse}`);
+        }
+      }
+      lines.push('');
+    }
+
+    // Условия договора
+    const contract = info.contractTerms as Record<string, unknown> | undefined;
+    if (contract) {
+      lines.push('УСЛОВИЯ ДОГОВОРА:');
+      if (contract.duration) lines.push(`  📝 Срок: ${contract.duration}`);
+      const deposit = contract.deposit as { amount?: string; description?: string } | undefined;
+      if (deposit) {
+        lines.push(`  💰 Депозит: ${deposit.amount} (${deposit.description})`);
+      }
+      if (contract.earlyTermination) lines.push(`  ⚠️ Досрочное расторжение: ${contract.earlyTermination}`);
+      const legal = contract.legalEntities as Record<string, unknown> | undefined;
+      if (legal) {
+        lines.push(`  🏢 Договор: только с ИП / юрлицами (${legal.taxSystem})`);
+        if (legal.individualsNotAccepted) lines.push(`  ❌ С физлицами договор НЕ заключается`);
+      }
+      lines.push('');
+    }
+
+    // Форма собственности
+    if (info.ownershipForm) lines.push(`Форма собственности: ${info.ownershipForm}`);
+    if (info.individualsPolicy) lines.push(`${info.individualsPolicy}`);
+    if (info.brokerCommission) lines.push(`Комиссия брокера: ${info.brokerCommission}`);
+
+    return lines.join('\n');
   }
 
   private buildFAQContext(knowledgeItems: KnowledgeItem[]): string {

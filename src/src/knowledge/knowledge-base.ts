@@ -296,6 +296,40 @@ export class KnowledgeBase {
     };
   }
 
+  /**
+   * Форматировать дату доступности офиса в человекочитаемый вид.
+   * - "available" или прошедшая дата → "свободен сейчас"
+   * - Будущая дата текущего года → "свободен с 1 апреля"
+   * - Будущая дата другого года → "свободен с 1 апреля 2027"
+   */
+  private formatAvailability(availableFrom: string, status: string): string {
+    if (status !== 'free') return status === 'rented' ? 'занят' : status;
+    if (availableFrom === 'available') return 'свободен сейчас';
+
+    // Пробуем распарсить дату
+    const date = new Date(availableFrom);
+    if (isNaN(date.getTime())) return `свободен с ${availableFrom}`;
+
+    const now = new Date();
+    // Если дата в прошлом или сегодня — офис уже свободен
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (date <= today) return 'свободен сейчас';
+
+    // Форматируем будущую дату
+    const months = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    ];
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+
+    if (year === now.getFullYear()) {
+      return `свободен с ${day} ${month}`;
+    }
+    return `свободен с ${day} ${month} ${year}`;
+  }
+
   // --- Private: File Loading ---
 
   private async loadJsonFile<T>(filePath: string): Promise<T | null> {
@@ -410,12 +444,8 @@ export class KnowledgeBase {
     // Offices (из offices.json) — ОСНОВНОЙ ИСТОЧНИК ДАННЫХ ОБ ОФИСАХ
     for (const office of this.offices) {
       const locationName = LOCATION_NAMES[office.locationId] || office.locationId;
-      const isAvailable = office.status === 'free' && office.availableFrom === 'available';
-      const availabilityText = isAvailable
-        ? 'свободен сейчас'
-        : office.availableFrom !== 'available'
-          ? `свободен с ${office.availableFrom}`
-          : office.status;
+      const availabilityText = this.formatAvailability(office.availableFrom, office.status);
+      const isAvailable = availabilityText === 'свободен сейчас';
 
       const title = `Офис №${office.number} на ${office.capacity} мест (${locationName})`;
       const areaText = office.area ? `, ${office.area} м²` : '';
@@ -577,7 +607,7 @@ export class KnowledgeBase {
       keywords.push(...(info as any).features.map((f: string) => f.toLowerCase()));
     }
 
-    // Locations — addresses, features, metro
+    // Locations — addresses, features, metro, parking, legalAddress
     if (Array.isArray(info.locations)) {
       for (const loc of info.locations) {
         if (loc.address) keywords.push(loc.address.toLowerCase());
@@ -586,6 +616,9 @@ export class KnowledgeBase {
         if (Array.isArray(loc.features)) {
           keywords.push(...loc.features.map((f: string) => f.toLowerCase()));
         }
+        if ((loc as any).parking) keywords.push('парковка', 'парковки', 'машина', 'авто', 'parking');
+        if ((loc as any).legalAddress) keywords.push('юрадрес', 'юридический адрес', 'регистрация', 'юр адрес');
+        if ((loc as any).taxation) keywords.push('ндс', 'налог', 'усн', 'аусн');
       }
     }
     // Legacy singular location
@@ -594,6 +627,13 @@ export class KnowledgeBase {
 
     if (info.contacts?.phone) keywords.push(info.contacts.phone);
     if (info.contacts?.email) keywords.push(info.contacts.email);
+
+    // Дополнительные ключевые слова для частых запросов
+    keywords.push(
+      'стоимость', 'входит в стоимость', 'включено', 'что входит',
+      'парковка', 'юрадрес', 'юридический адрес',
+      'депозит', 'договор', 'срок аренды',
+    );
 
     if (info.tagline) {
       keywords.push(...this.extractWords(info.tagline));
