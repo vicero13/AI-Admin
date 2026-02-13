@@ -187,6 +187,29 @@ export class TelegramAdapter {
     // Business messages (from Telegram Business accounts)
     (this.bot as any).on('business_message', async (msg: BusinessMessage) => {
       this.metrics.businessMessages++;
+
+      // Команда /reset прямо в бизнес-чате — сброс разговора
+      const msgText = (msg.text || '').trim().toLowerCase();
+      if (msgText === '/reset' || msgText === '/сброс') {
+        const conversationId = String(msg.chat.id);
+        log.info('🔄 Reset command in business chat', { conversationId, from: msg.from?.id });
+        if (this.conversationResetHandler) {
+          try {
+            await this.conversationResetHandler(conversationId);
+            log.info('✅ Business chat reset successful', { conversationId });
+            // Удаляем команду из чата чтобы клиент не видел
+            if (this.bot && msg.business_connection_id) {
+              try {
+                await this.bot.deleteMessage(msg.chat.id, msg.message_id);
+              } catch { /* не критично если не удалилось */ }
+            }
+          } catch (error) {
+            log.error('❌ Error resetting business chat', { conversationId, error: String(error) });
+          }
+        }
+        return; // не обрабатываем как обычное сообщение
+      }
+
       await this.handleRawMessage(msg, true);
     });
 
