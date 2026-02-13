@@ -1,7 +1,43 @@
 // ============================================================
 // Media Resource Service — Управление медиа-ресурсами объектов (v2.0)
-// Новое: CIAN links, per-location structure, presentation auto-send
+// Медиа-файлы, презентации, 3D-туры, ЦИАН. Автоотправка клиентам.
 // ============================================================
+
+export enum MediaScope {
+  SPECIFIC_OFFICE = 'specific_office',     // "покажите офис 311"
+  SPECIFIC_LOCATION = 'specific_location', // "покажите чистые пруды"
+  ALL_LOCATIONS = 'all_locations',         // "покажите всё что есть"
+  NONE = 'none',
+}
+
+export interface MediaScopeResult {
+  scope: MediaScope;
+  locationIds: string[];
+  officeIds: string[];
+}
+
+/** Одно сообщение для отправки (текст и/или файл) */
+export interface MediaMessage {
+  text?: string;
+  attachment?: {
+    type: 'file' | 'photo' | 'video';
+    filePath: string;
+    caption?: string;
+  };
+  delayMs: number;
+}
+
+/** Офис из knowledge-base (передаётся извне, чтобы не было circular deps) */
+export interface OfficeInfo {
+  id: string;
+  locationId: string;
+  number: string;
+  capacity: number;
+  pricePerMonth: number;
+  link?: string;
+  availableFrom: string;
+  status: string;
+}
 
 export interface MediaResourceConfig {
   enabled: boolean;
@@ -24,6 +60,7 @@ export interface OfficeMedia {
   name: string;
   address: string;
   photos: MediaItem[];
+  videos: MediaItem[];
   keywords: string[];
 }
 
@@ -43,6 +80,14 @@ export class MediaResourceService {
 
   constructor(config: MediaResourceConfig) {
     this.config = config;
+  }
+
+  /**
+   * Обновить конфиг медиа (hot-reload без пересоздания объекта)
+   */
+  updateConfig(config: MediaResourceConfig): void {
+    this.config = config;
+    // Не сбрасываем presentationsSent — трекинг отправок сохраняется
   }
 
   getPhotosForObject(objectId: string): MediaItem[] {
@@ -76,7 +121,9 @@ export class MediaResourceService {
   }
 
   /**
-   * Найти релевантные медиа по тексту сообщения
+   * Найти релевантные медиа по тексту сообщения.
+   * Ищет сначала по объектам (локациям), потом по отдельным офисам.
+   * Для офисов ищет по keywords + по номеру офиса из officeId (cp-311 → "311").
    */
   findRelevantMedia(message: string): MediaItem[] {
     if (!this.config.enabled) return [];
@@ -84,10 +131,11 @@ export class MediaResourceService {
     const lower = message.toLowerCase();
     const results: MediaItem[] = [];
 
+    // 1. Поиск по объектам (локациям): keywords match
     for (const [, obj] of Object.entries(this.config.objects)) {
-      const matched = obj.keywords.some((kw) => lower.includes(kw.toLowerCase()));
+      const matched = obj.keywords.some((kw) => kw && lower.includes(kw.toLowerCase()));
       if (matched) {
-        results.push(...obj.photos.slice(0, 3));
+        results.push(...obj.photos.slice(0, 5));
         if (obj.videos.length > 0) {
           results.push(obj.videos[0]);
         }
@@ -95,11 +143,17 @@ export class MediaResourceService {
       }
     }
 
+    // 2. Поиск по конкретным офисам: keywords + номер из officeId
     if (results.length === 0) {
-      for (const [, office] of Object.entries(this.config.offices)) {
-        const matched = office.keywords.some((kw) => lower.includes(kw.toLowerCase()));
-        if (matched) {
-          results.push(...office.photos.slice(0, 3));
+      for (const [officeId, office] of Object.entries(this.config.offices)) {
+        // Извлечь номер офиса из id (cp-311 → "311", sokol-4-120 → "120")
+        const officeNumber = officeId.replace(/^[a-z]+-/, '');
+        const matchedByKeyword = office.keywords.some((kw) => kw && lower.includes(kw.toLowerCase()));
+        const matchedByNumber = officeNumber && lower.includes(officeNumber);
+
+        if (matchedByKeyword || matchedByNumber) {
+          if (office.photos.length > 0) results.push(...office.photos.slice(0, 5));
+          if (office.videos && office.videos.length > 0) results.push(...office.videos);
           break;
         }
       }
@@ -225,5 +279,271 @@ export class MediaResourceService {
 
   isEnabled(): boolean {
     return this.config.enabled;
+  }
+
+  /** Получить имя объекта по id */
+  getObjectName(objectId: string): string {
+    return this.config.objects[objectId]?.name || objectId;
+  }
+
+  // ============================================================
+  // Scope detection: определить что именно хочет клиент
+  // ============================================================
+
+  /**
+   * Определить scope медиа-запроса по тексту сообщения и истории.
+   * @param text — текст сообщения клиента
+   * @param offices — список офисов из knowledge base
+   * @param conversationHistory — последние сообщения из истории (для определения контекста)
+   */
+  detectMediaScope(text: string, offices: OfficeInfo[], conversationHistory?: string[]): MediaScopeResult {
+    const lower = text.toLowerCase();
+
+    // 1. "Всё что есть" / "все материалы"
+    const allPatterns = [
+      'всё что есть', 'все что есть', 'все материалы', 'всю информацию',
+      'все локации', 'все объекты', 'покажите всё', 'покажите все',
+      'присылайте всё', 'присылайте все', 'давайте всё', 'давайте все',
+    ];
+    if (allPatterns.some(p => lower.includes(p))) {
+      const allLocationIds = Object.keys(this.config.objects);
+      return { scope: MediaScope.ALL_LOCATIONS, locationIds: allLocationIds, officeIds: [] };
+    }
+
+    // 2. Конкретный офис по номеру: "311", "офис 311"
+    const officeNumberMatch = lower.match(/(?:офис|кабинет|комнат|номер|№|#)?\s*(\d{3})\b/);
+    if (officeNumberMatch) {
+      const num = officeNumberMatch[1];
+      // Найти officeId в media config
+      for (const [officeId] of Object.entries(this.config.offices)) {
+        const officeNumber = officeId.replace(/^[a-z]+-/, '');
+        if (officeNumber === num) {
+          return { scope: MediaScope.SPECIFIC_OFFICE, locationIds: [], officeIds: [officeId] };
+        }
+      }
+      // Даже если нет в media — ищем в offices для locationId
+      const matchedOffice = offices.find(o => o.number.includes(num) || o.id.includes(num));
+      if (matchedOffice) {
+        return { scope: MediaScope.SPECIFIC_OFFICE, locationIds: [matchedOffice.locationId], officeIds: [matchedOffice.id] };
+      }
+    }
+
+    // 3. Конкретная локация по keywords из текущего сообщения
+    for (const [locationId, obj] of Object.entries(this.config.objects)) {
+      const matched = obj.keywords.some(kw => kw && lower.includes(kw.toLowerCase()));
+      if (matched) {
+        return { scope: MediaScope.SPECIFIC_LOCATION, locationIds: [locationId], officeIds: [] };
+      }
+    }
+
+    // 4. Fallback: искать локацию/офис в ИСТОРИИ разговора (последние сообщения)
+    //    Клиент пишет "можете фото/видео отправить?" без уточнения — смотрим о чём шла речь
+    if (conversationHistory && conversationHistory.length > 0) {
+      // Собираем всю историю в один текст (последние 5 сообщений)
+      const historyText = conversationHistory.slice(-5).join(' ').toLowerCase();
+
+      // Ищем номера офисов в истории
+      const historyOfficeMatch = historyText.match(/офис\s*(?:номер|№|#)?\s*(\d{3})/);
+      if (historyOfficeMatch) {
+        const num = historyOfficeMatch[1];
+        for (const [officeId] of Object.entries(this.config.offices)) {
+          const officeNumber = officeId.replace(/^[a-z]+-/, '');
+          if (officeNumber === num) {
+            return { scope: MediaScope.SPECIFIC_OFFICE, locationIds: [], officeIds: [officeId] };
+          }
+        }
+      }
+
+      // Ищем локацию в истории
+      for (const [locationId, obj] of Object.entries(this.config.objects)) {
+        const matched = obj.keywords.some(kw => kw && historyText.includes(kw.toLowerCase()));
+        if (matched) {
+          return { scope: MediaScope.SPECIFIC_LOCATION, locationIds: [locationId], officeIds: [] };
+        }
+      }
+    }
+
+    return { scope: MediaScope.NONE, locationIds: [], officeIds: [] };
+  }
+
+  // ============================================================
+  // Build media messages: собрать массив сообщений для отправки
+  // ============================================================
+
+  /**
+   * Построить массив медиа-сообщений для отправки клиенту.
+   * @returns массив MediaMessage + текстовое описание для AI
+   */
+  buildMediaMessages(
+    scopeResult: MediaScopeResult,
+    offices: OfficeInfo[],
+    conversationId: string,
+  ): { messages: MediaMessage[]; description: string } {
+    if (scopeResult.scope === MediaScope.NONE) {
+      return { messages: [], description: '' };
+    }
+
+    switch (scopeResult.scope) {
+      case MediaScope.SPECIFIC_OFFICE:
+        return this.buildOfficeMedia(scopeResult.officeIds, scopeResult.locationIds, offices);
+      case MediaScope.SPECIFIC_LOCATION:
+        return this.buildLocationMedia(scopeResult.locationIds, offices, conversationId);
+      case MediaScope.ALL_LOCATIONS:
+        return this.buildAllLocationsMedia(offices, conversationId);
+      default:
+        return { messages: [], description: '' };
+    }
+  }
+
+  private buildOfficeMedia(
+    officeIds: string[],
+    locationIds: string[],
+    offices: OfficeInfo[],
+  ): { messages: MediaMessage[]; description: string } {
+    const messages: MediaMessage[] = [];
+    const descParts: string[] = [];
+
+    for (const officeId of officeIds) {
+      const officeMedia = this.config.offices[officeId];
+      if (officeMedia) {
+        // Фото офиса
+        for (const photo of officeMedia.photos) {
+          if (photo.filePath) {
+            messages.push({ attachment: { type: 'photo', filePath: photo.filePath, caption: photo.caption || `${officeMedia.name}` }, delayMs: 500 });
+          }
+        }
+        // Видео офиса
+        if (officeMedia.videos) {
+          for (const video of officeMedia.videos) {
+            if (video.filePath) {
+              messages.push({ attachment: { type: 'video', filePath: video.filePath, caption: video.caption || `Видео ${officeMedia.name}` }, delayMs: 500 });
+            }
+          }
+        }
+        descParts.push(`${officeMedia.photos.length} фото, ${officeMedia.videos?.length || 0} видео для ${officeMedia.name}`);
+      }
+    }
+
+    // Если для офиса нет своего медиа — отправить медиа локации
+    if (messages.length === 0 && locationIds.length > 0) {
+      return this.buildLocationMedia(locationIds, offices, '');
+    }
+
+    return { messages, description: descParts.join('; ') };
+  }
+
+  private buildLocationMedia(
+    locationIds: string[],
+    offices: OfficeInfo[],
+    conversationId: string,
+  ): { messages: MediaMessage[]; description: string } {
+    const messages: MediaMessage[] = [];
+    const descParts: string[] = [];
+
+    for (const locationId of locationIds) {
+      const obj = this.config.objects[locationId];
+      if (!obj) continue;
+
+      const locationName = obj.name;
+
+      // 1. Презентация (если ещё не отправляли)
+      if (obj.presentation && !this.isPresentationSent(conversationId, locationId)) {
+        messages.push({
+          attachment: { type: 'file', filePath: obj.presentation, caption: `Презентация ${locationName}` },
+          delayMs: 1000,
+        });
+        this.markPresentationSent(conversationId, locationId);
+        descParts.push(`презентация ${locationName}`);
+      }
+
+      // 2. Видео общих зон
+      for (const video of obj.videos) {
+        if (video.filePath) {
+          messages.push({
+            attachment: { type: 'video', filePath: video.filePath, caption: video.caption || `Видео ${locationName}` },
+            delayMs: 1000,
+          });
+        }
+      }
+      if (obj.videos.length > 0) descParts.push(`${obj.videos.length} видео ${locationName}`);
+
+      // 3. Фото общих зон (до 5)
+      const photosToSend = obj.photos.slice(0, 5);
+      for (const photo of photosToSend) {
+        if (photo.filePath) {
+          messages.push({
+            attachment: { type: 'photo', filePath: photo.filePath, caption: photo.caption },
+            delayMs: 300,
+          });
+        }
+      }
+      if (photosToSend.length > 0) descParts.push(`${photosToSend.length} фото ${locationName}`);
+
+      // 4. Текст: список офисов на этой локации
+      const locationOffices = offices.filter(o => o.locationId === locationId && o.status === 'free');
+      if (locationOffices.length > 0) {
+        const officeLines = locationOffices.map(o => {
+          const price = `${(o.pricePerMonth / 1000).toFixed(0)} тыс. ₽/мес`;
+          const avail = o.availableFrom === 'available' ? 'свободен' : `с ${o.availableFrom}`;
+          const cian = o.link ? `\nЦИАН: ${o.link}` : '';
+          return `• ${o.number} — ${o.capacity} мест, ${price}, ${avail}${cian}`;
+        });
+
+        // Добавить ссылки (3D тур, ЦИАН)
+        const links: string[] = [];
+        if (obj.tour3d) links.push(`🏠 3D-тур: ${obj.tour3d}`);
+        if (obj.cianLink) links.push(`🔗 ЦИАН: ${obj.cianLink}`);
+        const linksText = links.length > 0 ? '\n\n' + links.join('\n') : '';
+
+        messages.push({
+          text: `📋 Офисы на ${locationName}:\n\n${officeLines.join('\n')}${linksText}`,
+          delayMs: 1500,
+        });
+      }
+
+      // 5. Для каждого офиса с медиа на этой локации — его медиа
+      for (const [officeId, officeMedia] of Object.entries(this.config.offices)) {
+        // Проверить что офис принадлежит этой локации
+        const knownOffice = offices.find(o => o.id === officeId);
+        if (!knownOffice || knownOffice.locationId !== locationId) continue;
+
+        const hasMedia = (officeMedia.photos?.length > 0) || (officeMedia.videos?.length > 0);
+        if (!hasMedia) continue;
+
+        // Фото + видео конкретного офиса
+        for (const photo of officeMedia.photos || []) {
+          if (photo.filePath) {
+            messages.push({ attachment: { type: 'photo', filePath: photo.filePath, caption: `${officeMedia.name}` }, delayMs: 300 });
+          }
+        }
+        for (const video of officeMedia.videos || []) {
+          if (video.filePath) {
+            messages.push({ attachment: { type: 'video', filePath: video.filePath, caption: `Видео ${officeMedia.name}` }, delayMs: 500 });
+          }
+        }
+      }
+    }
+
+    return { messages, description: descParts.join(', ') };
+  }
+
+  private buildAllLocationsMedia(
+    offices: OfficeInfo[],
+    conversationId: string,
+  ): { messages: MediaMessage[]; description: string } {
+    const allMessages: MediaMessage[] = [];
+    const allDesc: string[] = [];
+
+    const locationIds = Object.keys(this.config.objects);
+
+    for (const locationId of locationIds) {
+      const { messages, description } = this.buildLocationMedia([locationId], offices, conversationId);
+      if (messages.length > 0) {
+        allMessages.push(...messages);
+        if (description) allDesc.push(description);
+      }
+    }
+
+    return { messages: allMessages, description: allDesc.join('; ') };
   }
 }

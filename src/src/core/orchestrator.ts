@@ -43,7 +43,7 @@ import { ContactQualifier, ContactType } from './contact-qualifier';
 import { StrangeQuestionHandler, StrangeMessage } from './strange-question-handler';
 import { FollowUpService } from './followup-service';
 import { SummaryService } from './summary-service';
-import { MediaResourceService } from './media-resource-service';
+import { MediaResourceService, MediaScope, MediaMessage } from './media-resource-service';
 import { ConversationDetector } from './conversation-detector';
 import { OperatorRequestHandler } from './operator-request-handler';
 
@@ -61,7 +61,7 @@ export interface OrchestratorConfig {
 }
 
 export interface ResourceAttachment {
-  type: 'file' | 'link';
+  type: 'file' | 'link' | 'photo' | 'video';
   filePath?: string;
   url?: string;
   caption?: string;
@@ -87,15 +87,17 @@ export interface OrchestratorDeps {
   operatorRequestHandler?: OperatorRequestHandler;
 }
 
+export interface AdditionalMessage {
+  text?: string;
+  attachment?: ResourceAttachment;
+  delayMs: number;
+}
+
 export interface OrchestratorResponse {
   responseText: string;
   typingDelay: number;
   attachment?: ResourceAttachment;
-  // Новое: дополнительные сообщения (для multi-message patterns)
-  additionalMessages?: Array<{
-    text: string;
-    delayMs: number;
-  }>;
+  additionalMessages?: AdditionalMessage[];
 }
 
 export class Orchestrator {
@@ -217,7 +219,7 @@ export class Orchestrator {
 
     try {
       // 1. Получить или создать контекст
-      const context = await this.contextManager.getContext(conversationId);
+      let context = await this.contextManager.getContext(conversationId);
 
       if (!context.userId || context.userId === conversationId) {
         await this.contextManager.updateContext(conversationId, {
@@ -273,6 +275,21 @@ export class Orchestrator {
           role: MessageRole.USER,
           content: text,
           handledBy: MessageHandler.HUMAN,
+        });
+        return null;
+      }
+
+      // 3.5. Голые знаки препинания ("?", "!!", "??!" и т.д.) — это реакция на предыдущее
+      //      сообщение в чате, не требует отдельного ответа. Сохраняем в историю, но молчим.
+      const stripped = text.replace(/[\s\p{P}\p{S}]/gu, '');
+      if (stripped.length === 0 && text.trim().length > 0) {
+        this.logger.info(`[Step 3.5] Punctuation-only message "${text}" for ${conversationId} — skipping (relates to previous message)`);
+        await this.contextManager.addMessage(conversationId, {
+          messageId: message.messageId,
+          timestamp: message.timestamp,
+          role: MessageRole.USER,
+          content: text,
+          handledBy: MessageHandler.AI,
         });
         return null;
       }
@@ -438,12 +455,20 @@ export class Orchestrator {
 
           // Use AI to generate a natural brief response acknowledging their request
           // before handing off, with the additionalInstructions from strategy
+          // ВАЖНО: НИКОГДА не раскрывать тип контакта клиенту!
           try {
             const knowledgeResults = await this.knowledgeBase.search(text, 3);
             const relevantItems = knowledgeResults.map((r) => r.item);
+            // Добавляем критическое ограничение в контекст перед генерацией
+            const handoffContext = { ...updatedContext };
+            if (!handoffContext.metadata) handoffContext.metadata = {};
+            handoffContext.metadata.additionalInstructions =
+              '⚠️ АБСОЛЮТНЫЙ ЗАПРЕТ: НИКОГДА не раскрывай клиенту его тип (брокер/агент/резидент/поставщик). ' +
+              'ЗАПРЕЩЕНО: "вы брокер", "понятно, вы агент", "раз вы брокер". ' +
+              'Просто вежливо ответь на вопрос клиента и предложи связаться с менеджером для уточнения деталей.';
             const aiResponse = await this.aiEngine.generateHumanLikeResponse(
               text,
-              updatedContext,
+              handoffContext,
               relevantItems,
               this.config.personality
             );
@@ -556,6 +581,12 @@ export class Orchestrator {
               mode: ConversationMode.HUMAN,
               requiresHandoff: true,
             });
+
+            // Тихий handoff: если messages пуст — не отвечать клиенту (как живой человек)
+            if (result.messages.length === 0) {
+              this.logger.info(`[Step 8] Silent handoff for ${conversationId} — repeated strange questions, no response to client`);
+              return null;
+            }
           }
 
           // Если есть pending greeting — добавляем его перед скриптом
@@ -579,9 +610,43 @@ export class Orchestrator {
       this.logger.info(`[Step 9] Analysis for "${text.substring(0, 50)}": confidence=${analysis.confidence.score}, complexity=${analysis.complexity.score}, aiProbing=${analysis.aiProbing.detected}, emotion=${analysis.emotionalState.state}, requiresHandoff=${analysis.requiresHandoff}`);
 
       // 10. Проверить необходимость передачи менеджеру
+      // Для media_request: определяем scope и проверяем наличие медиа → если есть, обрабатываем сами
+      let mediaMessages: MediaMessage[] = [];
+      let mediaDescription = '';
+
       if (analysis.requiresHandoff && analysis.handoffReason) {
-        this.logger.info(`[Step 10] HANDOFF for "${text.substring(0, 50)}": reason=${analysis.handoffReason.type}, description=${analysis.handoffReason.description}`);
-        return await this.handleHandoff(conversationId, analysis, updatedContext);
+        if (analysis.handoffReason.type === HandoffReasonType.MEDIA_REQUEST && this.mediaResourceService?.isEnabled()) {
+          const offices = this.knowledgeBase.getOffices();
+          const officeInfos = offices.map(o => ({
+            id: o.id, locationId: o.locationId, number: o.number,
+            capacity: o.capacity, pricePerMonth: o.pricePerMonth,
+            link: o.link, availableFrom: o.availableFrom, status: o.status,
+          }));
+
+          // Определяем что хочет клиент: конкретный офис / локацию / всё
+          // Передаём историю сообщений для fallback-поиска контекста
+          const historyTexts = updatedContext.messageHistory
+            .slice(-6)
+            .map(m => m.content);
+          const scopeResult = this.mediaResourceService.detectMediaScope(text, officeInfos, historyTexts);
+
+          if (scopeResult.scope !== MediaScope.NONE) {
+            const built = this.mediaResourceService.buildMediaMessages(scopeResult, officeInfos, conversationId);
+            mediaMessages = built.messages;
+            mediaDescription = built.description;
+          }
+
+          if (mediaMessages.length > 0) {
+            this.logger.info(`[Step 10] Media request: scope=${scopeResult.scope}, ${mediaMessages.length} messages to send (${mediaDescription}) — skipping handoff`);
+          } else {
+            // Нет медиа для этого запроса — handoff
+            this.logger.info(`[Step 10] HANDOFF for "${text.substring(0, 50)}": reason=media_request, scope=${scopeResult.scope} — no media found`);
+            return await this.handleHandoff(conversationId, analysis, updatedContext);
+          }
+        } else {
+          this.logger.info(`[Step 10] HANDOFF for "${text.substring(0, 50)}": reason=${analysis.handoffReason.type}, description=${analysis.handoffReason.description}`);
+          return await this.handleHandoff(conversationId, analysis, updatedContext);
+        }
       }
 
       // 11. Обновить эмоциональное состояние
@@ -643,22 +708,18 @@ export class Orchestrator {
         }
       }
 
-      // ★ 13. Найти релевантные медиа + автоотправка презентации
+      // ★ 13. Медиа: если в Step 10 подготовлены медиа-сообщения — логируем.
+      //        Если нет mediaRequest, но есть ресурсные ссылки — добавляем в контекст AI.
       let mediaContext = '';
-      if (this.mediaResourceService?.isEnabled()) {
-        const media = this.mediaResourceService.findRelevantMedia(text);
-        if (media.length > 0) {
-          mediaContext = this.mediaResourceService.formatMediaMessage(media);
-        }
-
+      if (this.mediaResourceService?.isEnabled() && mediaMessages.length === 0) {
+        // Нет явного media request, но может быть полезно добавить ссылки в контекст AI
         const matchedObj = this.mediaResourceService.findObjectByKeywords(text);
         if (matchedObj) {
           const resourceLinks = this.mediaResourceService.formatResourceLinks(matchedObj.objectId);
           if (resourceLinks) {
-            mediaContext += (mediaContext ? '\n\n' : '') + resourceLinks;
+            mediaContext = resourceLinks;
           }
-
-          // Автоотправка презентации
+          // Автоотправка презентации (при первом упоминании локации)
           const presPath = this.mediaResourceService.shouldSendPresentation(conversationId, matchedObj.objectId);
           if (presPath && !attachment) {
             attachment = {
@@ -667,12 +728,14 @@ export class Orchestrator {
               caption: `Презентация ${matchedObj.object.name}`,
             };
             this.mediaResourceService.markPresentationSent(conversationId, matchedObj.objectId);
-            // Устанавливаем контекст для follow-up
             if (this.followUpService?.isEnabled()) {
               this.followUpService.setFollowUpContext(conversationId, 'presentation_sent');
             }
           }
         }
+      }
+      if (mediaMessages.length > 0) {
+        this.logger.info(`[Step 13] ${mediaMessages.length} media messages prepared: ${mediaDescription}`);
       }
 
       // 14. Сгенерировать ответ через AI (с retry + stalling + handoff)
@@ -696,13 +759,28 @@ export class Orchestrator {
         );
       }
 
-      if (mediaContext) {
+      if (mediaMessages.length > 0) {
+        // Клиент просит медиа — файлы будут прикреплены отдельными сообщениями
+        additionalInstructions.push(
+          `К этому ответу будут автоматически прикреплены медиа-файлы: ${mediaDescription}.\n` +
+          `Напиши короткий сопроводительный текст вроде "Направляю для вас..." или "Вот фото/видео...".\n` +
+          `НЕ вставляй ссылки на файлы — они будут отправлены отдельно.\n` +
+          `Если есть информация по офисам — она тоже будет в следующем сообщении.\n` +
+          `Если по какому-то офису нет медиа — можешь написать что уточнишь у коллег.`
+        );
+      } else if (mediaContext) {
         additionalInstructions.push(
           `Доступные медиа-ресурсы для этого запроса:\n${mediaContext}\nЕсли клиент спрашивает о фото/видео/3D-туре — включи ссылки в ответ.`
         );
       }
 
       if (this.contactQualifier?.isEnabled()) {
+        // КРИТИЧЕСКОЕ ПРАВИЛО: никогда не раскрывать клиенту его внутреннюю классификацию
+        additionalInstructions.push(
+          '⚠️ АБСОЛЮТНЫЙ ЗАПРЕТ: НИКОГДА не раскрывай клиенту его внутреннюю классификацию (брокер, агент, резидент, поставщик). ' +
+          'ЗАПРЕЩЕНО писать: "вы брокер", "понятно, вы агент", "раз вы брокер", "я вижу что вы агент" и любые подобные фразы. ' +
+          'Если нужно уточнить тип клиента, спроси вежливо: "Вы для себя офис подбираете или для клиента?"'
+        );
         const contactType = this.contactQualifier.getCachedType(conversationId);
         if (contactType) {
           const strategy = this.contactQualifier.getHandlingStrategy(contactType);
@@ -716,6 +794,12 @@ export class Orchestrator {
       const maxAttempts = retryConfig?.maxAttempts ?? 1;
 
       this.logger.info(`[Step 14] Generating AI response for "${text.substring(0, 50)}", maxAttempts=${maxAttempts}`);
+
+      // Передаём additionalInstructions в context.metadata для AI Engine
+      if (additionalInstructions.length > 0) {
+        if (!updatedContext.metadata) updatedContext.metadata = {};
+        updatedContext.metadata.additionalInstructions = additionalInstructions;
+      }
 
       let aiResponse: HumanLikeResponse | null = null;
       let lastError: Error | null = null;
@@ -807,6 +891,7 @@ export class Orchestrator {
 
       // 15.5. Fallback: если AI забыл маркер [HANDOFF], но текст содержит
       // обещания уточнить/переключить/узнать — принудительно вызываем handoff
+      // Если есть медиа — сначала отправляем текст + медиа, потом переключаем в HUMAN
       const responseTextLower = aiResponse.text.toLowerCase();
       const handoffPatterns = [
         /переключу\s+(на\s+)?(менеджер|коллег)/,
@@ -850,7 +935,18 @@ export class Orchestrator {
           handledBy: MessageHandler.AI,
         });
 
-        // Если было приветствие + запрос → приветствие + ответ AI как additional
+        // Собираем additional: медиа (если есть) прикрепляем — сначала отправить, потом HUMAN
+        const handoffAdditional: AdditionalMessage[] = [];
+        if (mediaMessages.length > 0) {
+          this.logger.info(`[Step 15.5] Sending ${mediaMessages.length} media messages BEFORE handoff`);
+          handoffAdditional.push(...mediaMessages.map(m => ({
+            text: m.text,
+            attachment: m.attachment ? { type: m.attachment.type, filePath: m.attachment.filePath, caption: m.attachment.caption } : undefined,
+            delayMs: m.delayMs,
+          })));
+        }
+
+        // Если было приветствие + запрос → приветствие + ответ AI + медиа
         if (pendingGreeting) {
           if (this.conversationDetector) {
             this.conversationDetector.markGreetingSent(conversationId);
@@ -865,16 +961,17 @@ export class Orchestrator {
           return {
             responseText: pendingGreeting,
             typingDelay: this.humanMimicry.calculateTypingDelay(pendingGreeting),
-            additionalMessages: [{
-              text: responseText,
-              delayMs: 1500 + Math.random() * 2000,
-            }],
+            additionalMessages: [
+              { text: responseText, delayMs: 1500 + Math.random() * 2000 },
+              ...handoffAdditional,
+            ],
           };
         }
 
         return {
           responseText,
           typingDelay: this.humanMimicry.calculateTypingDelay(responseText),
+          additionalMessages: handoffAdditional.length > 0 ? handoffAdditional : undefined,
         };
       }
 
@@ -962,18 +1059,38 @@ export class Orchestrator {
           content: pendingGreeting,
           handledBy: MessageHandler.AI,
         });
+        // Собираем все дополнительные сообщения: текст ответа + медиа
+        const allAdditional: AdditionalMessage[] = [
+          { text: responseText, delayMs: 1500 + Math.random() * 2000 },
+        ];
+        if (mediaMessages.length > 0) {
+          allAdditional.push(...mediaMessages.map(m => ({
+            text: m.text,
+            attachment: m.attachment ? { type: m.attachment.type, filePath: m.attachment.filePath, caption: m.attachment.caption } : undefined,
+            delayMs: m.delayMs,
+          })));
+        }
         return {
           responseText: pendingGreeting,
           typingDelay: this.humanMimicry.calculateTypingDelay(pendingGreeting),
           attachment,
-          additionalMessages: [{
-            text: responseText,
-            delayMs: 1500 + Math.random() * 2000,
-          }],
+          additionalMessages: allAdditional,
         };
       }
 
-      return { responseText, typingDelay, attachment };
+      // Собираем финальный ответ с медиа-сообщениями
+      const finalAdditional: AdditionalMessage[] = mediaMessages.map(m => ({
+        text: m.text,
+        attachment: m.attachment ? { type: m.attachment.type, filePath: m.attachment.filePath, caption: m.attachment.caption } : undefined,
+        delayMs: m.delayMs,
+      }));
+
+      return {
+        responseText,
+        typingDelay,
+        attachment,
+        additionalMessages: finalAdditional.length > 0 ? finalAdditional : undefined,
+      };
     } catch (error) {
       this.logger.error('Error processing message', { error: String(error), conversationId, stack: (error as Error)?.stack });
 
@@ -1007,13 +1124,17 @@ export class Orchestrator {
   /**
    * Построить ответ из массива сообщений (multi-message pattern)
    */
-  private buildMultiMessageResponse(messages: Array<{ text: string; delayMs: number }>): OrchestratorResponse {
+  private buildMultiMessageResponse(
+    messages: Array<{ text: string; delayMs: number }>,
+    extraMessages?: AdditionalMessage[],
+  ): OrchestratorResponse {
     if (messages.length === 0) {
       return { responseText: '', typingDelay: 0 };
     }
 
     const first = messages[0];
-    const additional = messages.slice(1);
+    const additional: AdditionalMessage[] = messages.slice(1);
+    if (extraMessages) additional.push(...extraMessages);
 
     return {
       responseText: first.text,
@@ -1073,6 +1194,36 @@ export class Orchestrator {
       requiresHandoff: false,
     });
     this.logger.info(`Conversation ${conversationId} switched to AI mode`);
+  }
+
+  /**
+   * Полный сброс разговора — как будто клиент пишет впервые.
+   * Очищает: контекст, режим, кэши детектора, классификатора, странных вопросов.
+   * Используется при очистке чата в Telegram для тестирования.
+   */
+  async resetConversation(conversationId: string): Promise<void> {
+    // 1. Сбросить handoff-режим
+    this.handoffSystem.setAIMode(conversationId);
+
+    // 2. Полностью удалить контекст (при следующем сообщении создастся новый)
+    this.contextManager.clearContext(conversationId);
+
+    // 3. Сбросить детектор разговоров (lastMessageId, greetingSentFor)
+    if (this.conversationDetector) {
+      this.conversationDetector.resetConversation(conversationId);
+    }
+
+    // 4. Сбросить классификатор контактов
+    if (this.contactQualifier) {
+      this.contactQualifier.resetClassification(conversationId);
+    }
+
+    // 5. Сбросить трекер странных вопросов
+    if (this.strangeQuestionHandler) {
+      this.strangeQuestionHandler.resetCount(conversationId);
+    }
+
+    this.logger.info(`[Reset] Conversation ${conversationId} fully reset — treated as new contact`);
   }
 
   isHumanMode(conversationId: string): boolean {
@@ -1139,7 +1290,27 @@ export class Orchestrator {
   }
 
   /**
-   * Проверка, является ли текст приветствием (включая английскую раскладку)
+   * Расстояние Левенштейна — для нечёткого сравнения (опечатки)
+   */
+  private levenshtein(a: string, b: string): number {
+    const m = a.length, n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+        );
+      }
+    }
+    return dp[m][n];
+  }
+
+  /**
+   * Проверка, является ли текст приветствием (включая английскую раскладку и опечатки)
    */
   private isGreetingOnly(text: string): boolean {
     const greetingWords = [
@@ -1150,7 +1321,19 @@ export class Orchestrator {
     const lower = text.toLowerCase().replace(/[!.,?\s]+/g, ' ').trim();
     // Конвертация СНАЧАЛА (до очистки пунктуации, т.к. , = б, . = ю в раскладке)
     const converted = this.convertEnToRu(text.toLowerCase()).replace(/[!.,?\s]+/g, ' ').trim();
-    return greetingWords.some(g => lower === g || converted === g);
+
+    // Точное совпадение
+    if (greetingWords.some(g => lower === g || converted === g)) return true;
+
+    // Нечёткое совпадение (Левенштейн): допускаем до 2 опечаток для длинных слов
+    for (const g of greetingWords) {
+      const maxDist = g.length <= 4 ? 1 : 2;
+      if (this.levenshtein(lower, g) <= maxDist || this.levenshtein(converted, g) <= maxDist) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private stripGreetingFromText(text: string): string {
@@ -1185,6 +1368,18 @@ export class Orchestrator {
    */
   private sanitizeResponse(text: string): string {
     let result = text;
+
+    // Запрещённые фразы раскрытия классификации контакта (удаляем целые предложения)
+    const classificationPhrases = [
+      /[^.!?\n]*(?:понятно|вижу|определил[аи]?|ясно),?\s*(?:что\s+)?(?:вы|Вы)\s+(?:брокер|агент|поставщик|резидент)[^.!?\n]*[.!?]?\s*/gi,
+      /[^.!?\n]*(?:вы|Вы)\s+(?:брокер|агент|поставщик|резидент)[^.!?\n]*[.!?]?\s*/gi,
+      /[^.!?\n]*(?:раз|так как|поскольку)\s+(?:вы|Вы)\s+(?:брокер|агент)[^.!?\n]*[.!?]?\s*/gi,
+      /[^.!?\n]*(?:вам|Вам)\s+как\s+(?:брокеру|агенту)[^.!?\n]*[.!?]?\s*/gi,
+    ];
+
+    for (const pattern of classificationPhrases) {
+      result = result.replace(pattern, '');
+    }
 
     // Запрещённые фразы (удаляем вместе с пунктуацией после них)
     const forbiddenPhrases = [

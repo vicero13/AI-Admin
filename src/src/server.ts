@@ -323,10 +323,28 @@ async function main() {
     console.log('[Init] ✅ Summary Service');
   }
 
-  // Media Resource Service
+  // Media Resource Service — загружаем из media.json (fallback на YAML)
   let mediaResourceService: MediaResourceService | undefined;
-  if (config.mediaResources?.enabled) {
-    mediaResourceService = new MediaResourceService(config.mediaResources as MediaResourceConfig);
+  const mediaJsonPath = path.resolve(knowledgeBasePath, 'media.json');
+  let mediaConfig: MediaResourceConfig | null = null;
+
+  if (fs.existsSync(mediaJsonPath)) {
+    try {
+      const raw = fs.readFileSync(mediaJsonPath, 'utf-8');
+      mediaConfig = JSON.parse(raw) as MediaResourceConfig;
+      console.log('[Init] Media config loaded from media.json');
+    } catch (err) {
+      console.warn('[Init] Failed to parse media.json:', err);
+    }
+  }
+
+  if (!mediaConfig && config.mediaResources) {
+    mediaConfig = config.mediaResources as MediaResourceConfig;
+    console.log('[Init] Media config loaded from YAML (fallback)');
+  }
+
+  if (mediaConfig?.enabled) {
+    mediaResourceService = new MediaResourceService(mediaConfig);
     console.log('[Init] ✅ Media Resource Service');
   }
 
@@ -412,6 +430,9 @@ async function main() {
     console.log('[Init] ✅ Follow-Up Service');
   }
 
+  // Очередь отправки — гарантирует что ответы уходят в порядке получения сообщений
+  const sendQueues: Map<string, Promise<void>> = new Map();
+
   telegramAdapter.setMessageHandler(async (message) => {
     try {
       const result = await orchestrator.handleIncomingMessage(message);
@@ -419,51 +440,82 @@ async function main() {
       if (result) {
         const businessConnectionId = TelegramAdapter.extractBusinessConnectionId(message);
 
-        // Использовать ResponseDelayService если доступен
-        if (responseDelayService?.isEnabled()) {
-          await responseDelayService.executeDelay(
-            message.conversationId,
-            businessConnectionId,
-            message.content.text || '',
-            result.responseText
-          );
-        } else {
-          await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
-          await sleep(Math.min(result.typingDelay, 4000));
-        }
+        // Ждём завершения предыдущей отправки для этого пользователя
+        const prevSend = sendQueues.get(message.conversationId);
 
-        // Отправить основной ответ
-        await telegramAdapter.sendMessage(
-          message.conversationId,
-          result.responseText,
-          businessConnectionId,
-        );
+        const sendTask = (async () => {
+          if (prevSend) await prevSend.catch(() => {});
 
-        // Отправить дополнительные сообщения (multi-message pattern)
-        if (result.additionalMessages) {
-          for (const addMsg of result.additionalMessages) {
-            if (addMsg.delayMs > 0) {
-              await sleep(addMsg.delayMs);
-            }
-            await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
-            await sleep(Math.min(1500 + Math.random() * 2000, 3000));
-            await telegramAdapter.sendMessage(
+          // Использовать ResponseDelayService если доступен
+          if (responseDelayService?.isEnabled()) {
+            await responseDelayService.executeDelay(
               message.conversationId,
-              addMsg.text,
               businessConnectionId,
+              message.content.text || '',
+              result.responseText
             );
+          } else {
+            await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+            await sleep(Math.min(result.typingDelay, 4000));
           }
-        }
 
-        // Отправить прикреплённый ресурс (файл/ссылку), если есть
-        if (result.attachment) {
-          if (result.attachment.type === 'file' && result.attachment.filePath) {
-            await telegramAdapter.sendDocument(
-              message.conversationId,
-              result.attachment.filePath,
-              { caption: result.attachment.caption, businessConnectionId },
-            );
+          // Отправить основной ответ
+          await telegramAdapter.sendMessage(
+            message.conversationId,
+            result.responseText,
+            businessConnectionId,
+          );
+
+          // Helper: отправить один attachment (фото/видео/документ)
+          const sendAttachment = async (att: typeof result.attachment) => {
+            if (!att) return;
+            const resolvedPath = att.filePath && !path.isAbsolute(att.filePath)
+              ? path.resolve(__dirname, '../..', att.filePath)
+              : att.filePath;
+            const sendOpts = { caption: att.caption, businessConnectionId };
+
+            if (att.type === 'photo' && resolvedPath) {
+              await telegramAdapter.sendPhoto(message.conversationId, resolvedPath, sendOpts);
+            } else if (att.type === 'video' && resolvedPath) {
+              await telegramAdapter.sendVideo(message.conversationId, resolvedPath, sendOpts);
+            } else if (att.type === 'file' && resolvedPath) {
+              await telegramAdapter.sendDocument(message.conversationId, resolvedPath, sendOpts);
+            }
+          };
+
+          // Отправить дополнительные сообщения (текст и/или медиа-файлы)
+          if (result.additionalMessages) {
+            for (const addMsg of result.additionalMessages) {
+              if (addMsg.delayMs > 0) {
+                await sleep(addMsg.delayMs);
+              }
+
+              if (addMsg.text) {
+                await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+                await sleep(Math.min(1500 + Math.random() * 2000, 3000));
+                await telegramAdapter.sendMessage(
+                  message.conversationId,
+                  addMsg.text,
+                  businessConnectionId,
+                );
+              }
+
+              if (addMsg.attachment) {
+                await sendAttachment(addMsg.attachment);
+              }
+            }
           }
+
+          // Отправить одиночный attachment (legacy / простые случаи)
+          if (result.attachment) {
+            await sendAttachment(result.attachment);
+          }
+        })();
+
+        sendQueues.set(message.conversationId, sendTask);
+        await sendTask;
+        if (sendQueues.get(message.conversationId) === sendTask) {
+          sendQueues.delete(message.conversationId);
         }
       }
     } catch (error) {
@@ -479,6 +531,12 @@ async function main() {
         console.error('[Server] Не удалось отправить сообщение об ошибке');
       }
     }
+  });
+
+  // Автоматический сброс при очистке чата в Telegram
+  telegramAdapter.setConversationResetHandler(async (conversationId: string) => {
+    console.log(`[Server] Chat cleared for ${conversationId} — resetting conversation`);
+    await orchestrator.resetConversation(conversationId);
   });
 
   await telegramAdapter.initialize();
@@ -560,6 +618,17 @@ async function main() {
     }
   });
 
+  // Полный сброс разговора (для тестирования: очистка чата → новый контакт)
+  app.post('/api/conversations/:id/reset', async (req, res) => {
+    const { id } = req.params;
+    try {
+      await orchestrator.resetConversation(id);
+      res.json({ status: 'ok', conversationId: id, message: 'Conversation fully reset — next message will be treated as new contact' });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to reset conversation' });
+    }
+  });
+
   // Проверка режима диалога
   app.get('/api/conversations/:id/mode', (req, res) => {
     const { id } = req.params;
@@ -582,6 +651,29 @@ async function main() {
     app.use('/', adminRouter);
     console.log('[Init] ✅ Admin panel enabled');
   }
+
+  // Hot-reload медиа конфига (вызывается из admin-panel после сохранения)
+  app.post('/api/admin/reload-media', (_req, res) => {
+    try {
+      if (!fs.existsSync(mediaJsonPath)) {
+        return res.status(404).json({ error: 'media.json not found' });
+      }
+      const raw = fs.readFileSync(mediaJsonPath, 'utf-8');
+      const newConfig = JSON.parse(raw) as MediaResourceConfig;
+
+      if (mediaResourceService) {
+        mediaResourceService.updateConfig(newConfig);
+      } else if (newConfig.enabled) {
+        mediaResourceService = new MediaResourceService(newConfig);
+        (orchestrator as any).mediaResourceService = mediaResourceService;
+      }
+      console.log('[Hot-reload] ✅ Media config reloaded');
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[Hot-reload] ❌ Failed to reload media:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   app.listen(port, () => {
     console.log('================================================');

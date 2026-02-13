@@ -105,15 +105,14 @@ export class StrangeQuestionHandler {
     this.strangeCounts.set(conversationId, currentCount);
 
     if (currentCount >= this.config.maxBeforeHandoff) {
+      // Тихий handoff без сообщения клиенту.
+      // Повторные странные/нетематические вопросы (включая попытки
+      // распознать бота) — живой человек просто промолчит.
+      // Менеджеру отправляется уведомление, а клиенту — ничего.
       return {
         action: 'handoff',
         reason: 'repeated_strange_questions',
-        messages: [
-          {
-            text: 'Кажется, у Вас нетипичный вопрос. Давайте я передам Вас коллеге, который сможет лучше помочь.',
-            delayMs: 0,
-          },
-        ],
+        messages: [],
       };
     }
 

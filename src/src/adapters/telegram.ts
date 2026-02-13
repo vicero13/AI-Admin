@@ -46,6 +46,7 @@ const BUSINESS_CONNECTION_CLEANUP_INTERVAL = 60 * 60 * 1000;
 export class TelegramAdapter {
   private bot: TelegramBot | null = null;
   private messageHandler: ((msg: UniversalMessage) => Promise<void>) | null = null;
+  private conversationResetHandler: ((conversationId: string) => Promise<void>) | null = null;
   private readonly platform: PlatformType = PlatformType.TELEGRAM;
   private readonly token: string;
   private readonly webhookConfig?: TelegramWebhookConfig;
@@ -88,8 +89,21 @@ export class TelegramAdapter {
       await this.setWebHookWithRetry(this.webhookConfig.url, webhookOptions, maxRetries);
       log.info('Webhook configured', { url: this.webhookConfig.url });
     } else {
-      this.bot = new TelegramBot(this.token, { polling: true });
-      log.info('Initialized with polling');
+      this.bot = new TelegramBot(this.token, {
+        polling: {
+          params: {
+            allowed_updates: [
+              'message',
+              'edited_message',
+              'business_connection',
+              'business_message',
+              'edited_business_message',
+              'deleted_business_messages',
+            ],
+          },
+        },
+      });
+      log.info('Initialized with polling (allowed_updates includes deleted_business_messages)');
     }
 
     this.setupListeners();
@@ -129,6 +143,31 @@ export class TelegramAdapter {
 
     // Regular direct messages
     this.bot.on('message', async (msg: TelegramBot.Message) => {
+      // Команда /reset <conversationId> — сброс разговора (для тестирования)
+      if (msg.text?.startsWith('/reset')) {
+        const parts = msg.text.split(/\s+/);
+        const targetId = parts[1];
+        if (targetId && this.conversationResetHandler) {
+          try {
+            await this.conversationResetHandler(targetId);
+            log.info('🔄 Manual reset via /reset command', { targetId, from: msg.from?.id });
+            if (this.bot) {
+              await this.bot.sendMessage(msg.chat.id, `✅ Разговор ${targetId} сброшен в AI-режим`);
+            }
+          } catch (error) {
+            log.error('Error in manual reset', { targetId, error: String(error) });
+            if (this.bot) {
+              await this.bot.sendMessage(msg.chat.id, `❌ Ошибка сброса: ${String(error)}`);
+            }
+          }
+        } else if (!targetId) {
+          if (this.bot) {
+            await this.bot.sendMessage(msg.chat.id, 'Использование: /reset <conversationId>');
+          }
+        }
+        return;
+      }
+
       this.metrics.regularMessages++;
       await this.handleRawMessage(msg);
     });
@@ -154,6 +193,38 @@ export class TelegramAdapter {
     // Business connection events — track can_reply state
     (this.bot as any).on('business_connection', (connection: BusinessConnectionUpdate) => {
       this.handleBusinessConnection(connection);
+    });
+
+    // Deleted business messages — при очистке чата клиентом сбрасываем разговор
+    (this.bot as any).on('deleted_business_messages', async (data: any) => {
+      const chatId = data?.chat?.id;
+      if (!chatId) return;
+
+      const conversationId = String(chatId);
+      const messageCount = data?.message_ids?.length || 0;
+
+      log.info('🗑️ Business messages deleted event received', {
+        conversationId,
+        messageCount,
+        messageIds: data?.message_ids,
+        businessConnectionId: data?.business_connection_id,
+        hasResetHandler: !!this.conversationResetHandler,
+        rawData: JSON.stringify(data).substring(0, 500),
+      });
+
+      // Любое удаление бизнес-сообщений → полный сброс разговора
+      // (при очистке чата Telegram может прислать даже 1 сообщение)
+      if (messageCount >= 1 && this.conversationResetHandler) {
+        log.info('🔄 Chat messages deleted — resetting conversation to AI mode', { conversationId, messageCount });
+        try {
+          await this.conversationResetHandler(conversationId);
+          log.info('✅ Conversation reset successful', { conversationId });
+        } catch (error) {
+          log.error('❌ Error resetting conversation on chat clear', { conversationId, error: String(error) });
+        }
+      } else if (!this.conversationResetHandler) {
+        log.warn('⚠️ deleted_business_messages received but no resetHandler set!', { conversationId });
+      }
     });
   }
 
@@ -243,7 +314,37 @@ export class TelegramAdapter {
       }
 
       if (this.bot && req.body) {
-        this.bot.processUpdate(req.body);
+        const update = req.body;
+
+        // Логируем ВСЕ типы update'ов для диагностики
+        const updateKeys = Object.keys(update).filter(k => k !== 'update_id');
+        log.info('📨 Raw webhook update', {
+          update_id: update.update_id,
+          types: updateKeys.join(','),
+        });
+
+        // Ручная обработка deleted_business_messages из raw body
+        // (на случай если библиотека не эмитит событие)
+        if (update.deleted_business_messages) {
+          const data = update.deleted_business_messages;
+          const chatId = data?.chat?.id;
+          const messageCount = data?.message_ids?.length || 0;
+          log.info('🗑️ deleted_business_messages in raw webhook', {
+            chatId,
+            messageCount,
+            messageIds: data?.message_ids,
+            businessConnectionId: data?.business_connection_id,
+          });
+          if (chatId && messageCount >= 1 && this.conversationResetHandler) {
+            const conversationId = String(chatId);
+            log.info('🔄 Resetting conversation from raw webhook handler', { conversationId });
+            this.conversationResetHandler(conversationId).catch(err => {
+              log.error('Error in raw webhook reset', { conversationId, error: String(err) });
+            });
+          }
+        }
+
+        this.bot.processUpdate(update);
       }
 
       res.sendStatus(200);
@@ -288,6 +389,14 @@ export class TelegramAdapter {
    */
   setMessageHandler(handler: (msg: UniversalMessage) => Promise<void>): void {
     this.messageHandler = handler;
+  }
+
+  /**
+   * Коллбек при очистке чата — вызывается когда Telegram присылает deleted_business_messages.
+   * Используется для полного сброса разговора (HUMAN mode, контекст, кэши).
+   */
+  setConversationResetHandler(handler: (conversationId: string) => Promise<void>): void {
+    this.conversationResetHandler = handler;
   }
 
   /**
@@ -386,6 +495,88 @@ export class TelegramAdapter {
       };
     } catch (error) {
       log.error('Error sending document', { conversationId, filePath, error: String(error) });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+  }
+
+  /**
+   * Send a photo to the specified conversation.
+   */
+  async sendPhoto(
+    conversationId: string,
+    photo: string, // file path or URL or file_id
+    options?: { caption?: string; businessConnectionId?: string },
+  ): Promise<MessageSendResult> {
+    if (!this.bot) {
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    const bizId = options?.businessConnectionId;
+    if (bizId && !this.canReplyToBusiness(bizId)) {
+      log.warn('Cannot send photo via business connection', { connectionId: bizId });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    try {
+      const sendOpts: Record<string, any> = {};
+      if (options?.caption) sendOpts.caption = options.caption;
+      if (bizId) sendOpts.business_connection_id = bizId;
+
+      const sentMessage = await this.bot.sendPhoto(conversationId, photo, sendOpts);
+      this.metrics.messagesSent++;
+
+      return {
+        messageId: uuidv4(),
+        platformMessageId: String(sentMessage.message_id),
+        timestamp: sentMessage.date ? sentMessage.date * 1000 : Date.now(),
+        status: 'sent',
+      };
+    } catch (error) {
+      log.error('Error sending photo', { conversationId, photo, error: String(error) });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+  }
+
+  /**
+   * Send a video to the specified conversation.
+   */
+  async sendVideo(
+    conversationId: string,
+    video: string, // file path or URL or file_id
+    options?: { caption?: string; businessConnectionId?: string },
+  ): Promise<MessageSendResult> {
+    if (!this.bot) {
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    const bizId = options?.businessConnectionId;
+    if (bizId && !this.canReplyToBusiness(bizId)) {
+      log.warn('Cannot send video via business connection', { connectionId: bizId });
+      this.metrics.messagesFailed++;
+      return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
+    }
+
+    try {
+      const sendOpts: Record<string, any> = {};
+      if (options?.caption) sendOpts.caption = options.caption;
+      if (bizId) sendOpts.business_connection_id = bizId;
+
+      const sentMessage = await this.bot.sendVideo(conversationId, video, sendOpts);
+      this.metrics.messagesSent++;
+
+      return {
+        messageId: uuidv4(),
+        platformMessageId: String(sentMessage.message_id),
+        timestamp: sentMessage.date ? sentMessage.date * 1000 : Date.now(),
+        status: 'sent',
+      };
+    } catch (error) {
+      log.error('Error sending video', { conversationId, video, error: String(error) });
       this.metrics.messagesFailed++;
       return { messageId: '', platformMessageId: '', timestamp: Date.now(), status: 'failed' };
     }

@@ -340,6 +340,11 @@ export interface SituationAnalysis {
   promptInjection?: { detected: boolean; confidence: number; patterns: string[] };
   mediaRequest?: { detected: boolean; keywords: string[] };
   profanity?: { detected: boolean; words: string[] };
+  viewingRequest?: { detected: boolean; keywords: string[] };
+  clientNearby?: { detected: boolean; keywords: string[] };
+  purchaseSale?: { detected: boolean; keywords: string[] };
+  subleaseLongTerm?: { detected: boolean; keywords: string[] };
+  officeCustomization?: { detected: boolean; keywords: string[] };
   metadata?: Record<string, unknown>;
 }
 

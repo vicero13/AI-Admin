@@ -11,4 +11,9 @@ export const PATHS = {
   faq: path.join(MAIN_APP_ROOT, 'knowledge-base', 'faq'),
   policies: path.join(MAIN_APP_ROOT, 'knowledge-base', 'policies'),
   backups: path.join(__dirname, '../../.backups'),
+  mediaJson: path.join(MAIN_APP_ROOT, 'knowledge-base', 'media.json'),
+  mediaFiles: path.join(MAIN_APP_ROOT, 'media'),
+  mediaPresentations: path.join(MAIN_APP_ROOT, 'media', 'presentations'),
+  mediaPhotos: path.join(MAIN_APP_ROOT, 'media', 'photos'),
+  mediaVideos: path.join(MAIN_APP_ROOT, 'media', 'videos'),
 };

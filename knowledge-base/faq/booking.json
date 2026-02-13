@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "faqId": "faq-booking-viewing-001",
+    "question": "Когда можно записаться на просмотр?",
+    "answer": "Сейчас уточню у менеджера по свободным датам и времени. Вам когда было бы удобно?",
+    "category": "booking",
+    "alternativeQuestions": [
+      "Когда можно посмотреть?",
+      "Записаться на просмотр",
+      "Хочу посмотреть офис",
+      "Можно прийти посмотреть?",
+      "Когда свободно?",
+      "Показ офиса"
+    ],
+    "relatedQuestions": ["faq-viewing-001"],
+    "popularity": 90,
+    "tags": ["просмотр", "запись", "показ", "посмотреть", "визит"],
+    "handoffTrigger": "viewing_request",
+    "handoffAction": "HANDOFF_WITH_RESPONSE",
+    "handoffPriority": "MEDIUM",
+    "handoffNote": "Передать менеджеру для согласования даты/времени просмотра"
+  },
+  {
+    "faqId": "faq-booking-nearby-001",
+    "question": "Я рядом, можно подойти?",
+    "answer": "",
+    "category": "booking",
+    "alternativeQuestions": [
+      "Я рядом",
+      "Сейчас подойти?",
+      "Я недалеко",
+      "Через 5 минут буду",
+      "Могу зайти",
+      "Я тут",
+      "Я на Мясницкой",
+      "Я на Соколе",
+      "Я на Цветном"
+    ],
+    "relatedQuestions": ["faq-booking-viewing-001"],
+    "popularity": 80,
+    "tags": ["рядом", "сейчас", "подойти", "зайти", "быстро"],
+    "handoffTrigger": "client_nearby",
+    "handoffAction": "IMMEDIATE_HANDOFF",
+    "handoffPriority": "HIGH",
+    "handoffNote": "НЕМЕДЛЕННЫЙ HANDOFF — клиент рядом с локацией, нужна быстрая реакция менеджера"
+  }
+]
