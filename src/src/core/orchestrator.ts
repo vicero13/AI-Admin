@@ -874,6 +874,7 @@ export class Orchestrator {
           `ОТВЕТЬ на ВСЕ вопросы клиента из сообщения (парковка, стоимость, юрадрес и т.д.) — используй базу знаний.\n` +
           `В конце или начале добавь что направляешь фото/видео.\n` +
           `НЕ вставляй ссылки на файлы — они будут отправлены отдельно.\n` +
+          `⚠️ НЕ ПИШИ [HANDOFF] и НЕ переключай на менеджера ради фото/видео — файлы УЖЕ прикреплены автоматически!\n` +
           `Если по какому-то офису нет медиа — можешь написать что уточнишь у коллег.`
         );
       } else if (mediaContext) {
@@ -992,8 +993,42 @@ export class Orchestrator {
       }
 
       // 15. Проверить ответ — если AI не уверен, передать менеджеру
+      //     НО если есть подготовленные mediaMessages — сначала отправить их!
       if (aiResponse.requiresHandoff && aiResponse.handoffReason) {
         this.logger.info(`[Step 15] AI requested handoff: ${aiResponse.handoffReason.type} — ${aiResponse.handoffReason.description}`);
+
+        if (mediaMessages.length > 0) {
+          // Есть медиа — отправляем текст AI + медиа, затем переключаем в HUMAN
+          this.logger.info(`[Step 15] Sending ${mediaMessages.length} media messages BEFORE handoff`);
+
+          await this.handoffSystem.initiateHandoff(conversationId, aiResponse.handoffReason, updatedContext);
+          await this.contextManager.updateContext(conversationId, {
+            mode: ConversationMode.HUMAN,
+            requiresHandoff: true,
+          });
+
+          const responseText = this.sanitizeResponse(aiResponse.text);
+          await this.contextManager.addMessage(conversationId, {
+            messageId: `ai-handoff-text-${Date.now()}`,
+            timestamp: Date.now(),
+            role: MessageRole.ASSISTANT,
+            content: responseText,
+            handledBy: MessageHandler.AI,
+          });
+
+          const handoffAdditional: AdditionalMessage[] = mediaMessages.map(m => ({
+            text: m.text,
+            attachment: m.attachment ? { type: m.attachment.type, filePath: m.attachment.filePath, caption: m.attachment.caption } : undefined,
+            delayMs: m.delayMs,
+          }));
+
+          return {
+            responseText,
+            typingDelay: this.humanMimicry.calculateTypingDelay(responseText),
+            additionalMessages: handoffAdditional,
+          };
+        }
+
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 
