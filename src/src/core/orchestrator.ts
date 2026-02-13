@@ -96,6 +96,8 @@ export interface AdditionalMessage {
 export interface OrchestratorResponse {
   responseText: string;
   typingDelay: number;
+  isGreeting?: boolean;             // для server.ts — управление задержками
+  firstMessageReceivedAt?: number;  // timestamp первого сообщения в batch
   attachment?: ResourceAttachment;
   additionalMessages?: AdditionalMessage[];
 }
@@ -125,6 +127,17 @@ export class Orchestrator {
 
   // Блокировка для последовательной обработки сообщений от одного пользователя
   private processingLocks: Map<string, Promise<OrchestratorResponse | null>> = new Map();
+
+  // Message batching: накапливаем сообщения 30 секунд и обрабатываем как одно
+  private messageBatchTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private messageBatchQueues: Map<string, UniversalMessage[]> = new Map();
+  private messageBatchResolvers: Map<string, Array<{
+    resolve: (v: OrchestratorResponse | null) => void;
+    reject: (e: Error) => void;
+  }>> = new Map();
+  private messageBatchFirstArrival: Map<string, number> = new Map(); // время первого сообщения
+  private readonly BATCH_DELAY_MS = 30000; // ждём 30 секунд перед обработкой
+  private readonly BATCH_GREETING_DELAY_MS = 2000; // для приветствий — 2 секунды
 
   constructor(config: OrchestratorConfig, deps: OrchestratorDeps) {
     this.config = config;
@@ -165,9 +178,9 @@ export class Orchestrator {
    * Главный метод обработки входящего сообщения.
    * Обновлённый pipeline v2.0
    *
-   * ВАЖНО: Используется блокировка для последовательной обработки
-   * сообщений от одного пользователя, чтобы избежать race conditions
-   * (например, дублирования приветствий)
+   * Message batching:
+   * - Обычные сообщения: ждём 30 секунд, собираем всё в пачку
+   * - Приветствие (первое сообщение): ждём 2 секунды и обрабатываем быстро
    */
   async handleIncomingMessage(
     message: UniversalMessage
@@ -179,22 +192,116 @@ export class Orchestrator {
 
     const conversationId = message.conversationId;
 
-    // Ждём завершения предыдущей обработки для этого пользователя
+    return new Promise<OrchestratorResponse | null>((resolve, reject) => {
+      // Добавляем сообщение в очередь
+      if (!this.messageBatchQueues.has(conversationId)) {
+        this.messageBatchQueues.set(conversationId, []);
+      }
+      this.messageBatchQueues.get(conversationId)!.push(message);
+
+      if (!this.messageBatchResolvers.has(conversationId)) {
+        this.messageBatchResolvers.set(conversationId, []);
+      }
+      this.messageBatchResolvers.get(conversationId)!.push({ resolve, reject });
+
+      // Запоминаем время первого сообщения в пачке
+      if (!this.messageBatchFirstArrival.has(conversationId)) {
+        this.messageBatchFirstArrival.set(conversationId, Date.now());
+      }
+
+      // Сбрасываем таймер — каждое новое сообщение продлевает ожидание
+      const existingTimer = this.messageBatchTimers.get(conversationId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+
+      const queueLen = this.messageBatchQueues.get(conversationId)!.length;
+
+      // Определяем задержку батча:
+      // - Первое сообщение и оно похоже на приветствие → короткий batch (2с)
+      // - Иначе → полный batch (30с), но НЕ больше 30с от первого сообщения
+      const messageText = message.content.text?.trim() || '';
+      const isFirstMessage = queueLen === 1;
+      const isLikelyGreeting = isFirstMessage && this.isGreetingOnly(messageText);
+
+      let batchDelay: number;
+      if (isLikelyGreeting) {
+        batchDelay = this.BATCH_GREETING_DELAY_MS;
+        this.logger.debug(`[Batch] Greeting detected for ${conversationId}, short batch: ${batchDelay}ms`);
+      } else {
+        // Считаем сколько осталось до 30с от первого сообщения
+        const firstArrival = this.messageBatchFirstArrival.get(conversationId) || Date.now();
+        const elapsed = Date.now() - firstArrival;
+        const remaining = Math.max(this.BATCH_DELAY_MS - elapsed, 1000); // минимум 1с
+        batchDelay = remaining;
+      }
+
+      this.logger.debug(`[Batch] Message queued for ${conversationId}, queue size: ${queueLen}, next batch in: ${batchDelay}ms`);
+
+      // Ставим таймер на обработку
+      const timer = setTimeout(() => {
+        this.messageBatchTimers.delete(conversationId);
+        this.messageBatchFirstArrival.delete(conversationId);
+        this.processBatch(conversationId);
+      }, batchDelay);
+
+      this.messageBatchTimers.set(conversationId, timer);
+    });
+  }
+
+  /**
+   * Обработать накопленный batch сообщений для одного conversationId.
+   * Объединяет тексты в одно сообщение, обрабатывает, возвращает результат всем ожидающим.
+   */
+  private async processBatch(conversationId: string): Promise<void> {
+    const messages = this.messageBatchQueues.get(conversationId) || [];
+    const resolvers = this.messageBatchResolvers.get(conversationId) || [];
+
+    this.messageBatchQueues.delete(conversationId);
+    this.messageBatchResolvers.delete(conversationId);
+
+    if (messages.length === 0) return;
+
+    // Запоминаем время первого сообщения для расчёта задержек в server.ts
+    const firstMessageReceivedAt = messages[0].timestamp;
+
+    // Объединяем сообщения: берём последнее как базу, текст — конкатенация всех
+    const combinedMessage: UniversalMessage = { ...messages[messages.length - 1] };
+    if (messages.length > 1) {
+      const combinedText = messages
+        .map(m => m.content.text?.trim())
+        .filter(Boolean)
+        .join('\n');
+      combinedMessage.content = { ...combinedMessage.content, text: combinedText };
+      this.logger.info(`[Batch] Combined ${messages.length} messages for ${conversationId}: "${combinedText.substring(0, 100)}"`);
+    }
+
+    // Ждём завершения предыдущей обработки
     const existingLock = this.processingLocks.get(conversationId);
     if (existingLock) {
       this.logger.debug(`Waiting for previous message processing for ${conversationId}`);
-      await existingLock.catch(() => {}); // Игнорируем ошибки предыдущей обработки
+      await existingLock.catch(() => {});
     }
 
-    // Создаём новый промис для текущей обработки
-    const processingPromise = this.processMessageInternal(message);
+    // Обрабатываем объединённое сообщение
+    const processingPromise = this.processMessageInternal(combinedMessage);
     this.processingLocks.set(conversationId, processingPromise);
 
     try {
       const result = await processingPromise;
-      return result;
+      // Добавляем timestamp первого сообщения к результату
+      if (result) {
+        result.firstMessageReceivedAt = firstMessageReceivedAt;
+      }
+      // Первый resolver получает результат, остальные — null (сообщение уже обработано)
+      for (let i = 0; i < resolvers.length; i++) {
+        resolvers[i].resolve(i === 0 ? result : null);
+      }
+    } catch (error) {
+      for (const r of resolvers) {
+        r.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     } finally {
-      // Очищаем блокировку после завершения
       if (this.processingLocks.get(conversationId) === processingPromise) {
         this.processingLocks.delete(conversationId);
       }
@@ -411,6 +518,7 @@ export class Orchestrator {
               return {
                 responseText: greeting,
                 typingDelay: this.humanMimicry.calculateTypingDelay(greeting),
+                isGreeting: true,
               };
             }
 
@@ -1367,7 +1475,8 @@ export class Orchestrator {
    * Удалить запрещённые фразы и символы из ответа
    */
   private sanitizeResponse(text: string): string {
-    let result = text;
+    // Удалить маркер [HANDOFF] — он не должен быть виден клиенту
+    let result = text.replace(/\[HANDOFF\]\s*/gi, '');
 
     // Запрещённые фразы раскрытия классификации контакта (удаляем целые предложения)
     const classificationPhrases = [
