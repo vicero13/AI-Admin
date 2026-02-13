@@ -851,14 +851,17 @@ export class Orchestrator {
 
       // Защита от повторного приветствия: ПЕРЕЗАГРУЖАЕМ контекст для актуальной истории
       const freshContextForGreeting = await this.contextManager.getContext(conversationId);
-      const hasGreeting = freshContextForGreeting.messageHistory.some(
+      const hasGreetingInHistory = freshContextForGreeting.messageHistory.some(
         (m) => m.role === MessageRole.ASSISTANT &&
           (m.content.includes('Добрый день') ||
            m.content.includes('Здравствуйте') ||
            m.content.includes('приятно познакомиться') ||
            m.content.includes('Привет'))
       );
+      // pendingGreeting тоже считается — оно будет отправлено ПЕРЕД ответом AI
+      const hasGreeting = hasGreetingInHistory || !!pendingGreeting;
       if (hasGreeting) {
+        this.logger.info(`[Step 14] Greeting already exists (history=${hasGreetingInHistory}, pending=${!!pendingGreeting}) — instructing AI to NOT greet`);
         additionalInstructions.push(
           '⚠️ КРИТИЧЕСКИ ВАЖНО: Приветствие УЖЕ было отправлено в этом разговоре! ' +
           'КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО здороваться повторно! ' +
@@ -1138,7 +1141,11 @@ export class Orchestrator {
 
       // 16.6. Удалить повторное приветствие если уже здоровались
       if (hasGreeting) {
+        const before = responseText;
         responseText = this.removeGreetingFromResponse(responseText);
+        if (before !== responseText) {
+          this.logger.info(`[Step 16.6] Removed duplicate greeting from AI response`);
+        }
       }
 
       // 17. Проверить на роботичность
