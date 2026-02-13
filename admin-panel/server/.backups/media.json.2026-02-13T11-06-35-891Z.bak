@@ -1,0 +1,126 @@
+{
+  "enabled": true,
+  "basePath": "./media",
+  "objects": {
+    "sokol": {
+      "name": "Сокол",
+      "photos": [],
+      "videos": [],
+      "tour3d": "https://ru.matterport.host/QjG48saGeUQ/?m=QjG48saGeUQ",
+      "presentation": "",
+      "cianLink": "https://www.cian.ru/company/35639167/",
+      "keywords": [
+        "сокол",
+        "посёлок художников",
+        "sokol"
+      ]
+    },
+    "chistye-prudy": {
+      "name": "Чистые пруды",
+      "photos": [
+        {
+          "id": "piz3vzdt",
+          "type": "photo",
+          "filePath": "media/photos/65d082ca.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "31k0swr7",
+          "type": "photo",
+          "filePath": "media/photos/1b3f0de5.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "j95y01x4",
+          "type": "photo",
+          "filePath": "media/photos/96f49de3.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "nv7ubfp3",
+          "type": "photo",
+          "filePath": "media/photos/41abbc5c.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "cl8dto89",
+          "type": "photo",
+          "filePath": "media/photos/d52d6c24.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "fa62xv1i",
+          "type": "photo",
+          "filePath": "media/photos/36326d85.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "8ad6d12m",
+          "type": "photo",
+          "filePath": "media/photos/f079b1a2.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "nirdi073",
+          "type": "photo",
+          "filePath": "media/photos/1b71d878.jpg",
+          "caption": "",
+          "tags": []
+        },
+        {
+          "id": "pyl09cna",
+          "type": "photo",
+          "filePath": "media/photos/749d9fa7.jpg",
+          "caption": "",
+          "tags": []
+        }
+      ],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "media/presentations/8dd2288f.pdf",
+      "cianLink": "https://www.cian.ru/company/35639167/",
+      "keywords": [
+        "чистые пруды",
+        "усадьба демидовых",
+        "chistye prudy"
+      ]
+    },
+    "tsvetnoy": {
+      "name": "Цветной бульвар",
+      "photos": [],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "",
+      "cianLink": "https://www.cian.ru/company/35639167/",
+      "keywords": [
+        "цветной",
+        "цветной бульвар",
+        "tsvetnoy"
+      ]
+    }
+  },
+  "offices": {
+    "cp-311": {
+      "name": "Чистые пруды — 311",
+      "address": "",
+      "photos": [],
+      "videos": [
+        {
+          "id": "tbpfsg28",
+          "type": "video",
+          "filePath": "media/videos/a68e33c6.MP4",
+          "caption": "",
+          "tags": []
+        }
+      ],
+      "keywords": []
+    }
+  }
+}

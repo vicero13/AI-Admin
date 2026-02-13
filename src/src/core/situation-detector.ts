@@ -208,6 +208,58 @@ const MEDIA_REQUEST_KEYWORDS: string[] = [
   'есть фото',
 ];
 
+// Запрос на просмотр — handoff для согласования даты/времени
+const VIEWING_REQUEST_KEYWORDS: string[] = [
+  'когда можно посмотреть',
+  'записаться на просмотр',
+  'хочу посмотреть',
+  'можно прийти посмотреть',
+  'когда свободно',
+  'показ',
+];
+
+// Клиент рядом — немедленный handoff
+const CLIENT_NEARBY_KEYWORDS: string[] = [
+  'я рядом',
+  'сейчас подойти',
+  'недалеко',
+  'через 5 минут',
+  'могу зайти',
+  'я тут',
+  'я на мясницкой',
+  'я на соколе',
+  'я на цветном',
+  'я у вас рядом',
+];
+
+// Покупка/продажа объекта — немедленный handoff
+const PURCHASE_SALE_KEYWORDS: string[] = [
+  'купить',
+  'продажа',
+  'покупка',
+  'продать помещение',
+  'купить помещение',
+];
+
+// Субаренда / длительный договор — handoff
+const SUBLEASE_LONG_TERM_KEYWORDS: string[] = [
+  'субаренда',
+  'длительный договор',
+  'больше 11 месяцев',
+  'долгосрочный',
+  'на несколько лет',
+];
+
+// Кастомизация офиса — handoff для уточнений
+const OFFICE_CUSTOMIZATION_KEYWORDS: string[] = [
+  'камеры',
+  'перекрасить',
+  'ремонт',
+  'переделать',
+  'повесить',
+  'установить',
+];
+
 export class SituationDetector {
   private thresholds: DetectionThresholds;
 
@@ -229,6 +281,11 @@ export class SituationDetector {
     const promptInjection = this.detectPromptInjection(text);
     const mediaRequest = this.detectMediaRequest(text);
     const profanity = this.detectProfanity(text);
+    const viewingRequest = this.detectViewingRequest(text);
+    const clientNearby = this.detectClientNearby(text);
+    const purchaseSale = this.detectPurchaseSale(text);
+    const subleaseLongTerm = this.detectSubleaseLongTerm(text);
+    const officeCustomization = this.detectOfficeCustomization(text);
 
     const overallRisk = this.computeOverallRisk(aiProbing, complexity, emotionalState, confidence);
     const urgency = this.computeUrgency(emotionalState, complexity, aiProbing);
@@ -248,6 +305,11 @@ export class SituationDetector {
       promptInjection,
       mediaRequest,
       profanity,
+      viewingRequest,
+      clientNearby,
+      purchaseSale,
+      subleaseLongTerm,
+      officeCustomization,
     };
 
     analysis.requiresHandoff = this.shouldHandoff(analysis);
@@ -701,6 +763,76 @@ export class SituationDetector {
   }
 
   /**
+   * Детекция запроса на просмотр офиса
+   */
+  detectViewingRequest(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+    for (const keyword of VIEWING_REQUEST_KEYWORDS) {
+      if (lower.includes(keyword)) {
+        foundKeywords.push(keyword);
+      }
+    }
+    return { detected: foundKeywords.length > 0, keywords: foundKeywords };
+  }
+
+  /**
+   * Детекция клиента рядом с локацией — немедленный handoff
+   */
+  detectClientNearby(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+    for (const keyword of CLIENT_NEARBY_KEYWORDS) {
+      if (lower.includes(keyword)) {
+        foundKeywords.push(keyword);
+      }
+    }
+    return { detected: foundKeywords.length > 0, keywords: foundKeywords };
+  }
+
+  /**
+   * Детекция запроса на покупку/продажу объекта — немедленный handoff
+   */
+  detectPurchaseSale(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+    for (const keyword of PURCHASE_SALE_KEYWORDS) {
+      if (lower.includes(keyword)) {
+        foundKeywords.push(keyword);
+      }
+    }
+    return { detected: foundKeywords.length > 0, keywords: foundKeywords };
+  }
+
+  /**
+   * Детекция вопросов о субаренде или длительном договоре
+   */
+  detectSubleaseLongTerm(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+    for (const keyword of SUBLEASE_LONG_TERM_KEYWORDS) {
+      if (lower.includes(keyword)) {
+        foundKeywords.push(keyword);
+      }
+    }
+    return { detected: foundKeywords.length > 0, keywords: foundKeywords };
+  }
+
+  /**
+   * Детекция запросов на кастомизацию офиса (камеры, ремонт и т.д.)
+   */
+  detectOfficeCustomization(message: string): { detected: boolean; keywords: string[] } {
+    const lower = message.toLowerCase();
+    const foundKeywords: string[] = [];
+    for (const keyword of OFFICE_CUSTOMIZATION_KEYWORDS) {
+      if (lower.includes(keyword)) {
+        foundKeywords.push(keyword);
+      }
+    }
+    return { detected: foundKeywords.length > 0, keywords: foundKeywords };
+  }
+
+  /**
    * Определяет, нужен ли хэндофф на основе анализа ситуации и порогов.
    */
   shouldHandoff(analysis: SituationAnalysis): boolean {
@@ -716,6 +848,31 @@ export class SituationDetector {
 
     // Prompt injection — ОБЯЗАТЕЛЬНЫЙ хэндофф
     if (analysis.promptInjection?.detected) {
+      return true;
+    }
+
+    // Клиент рядом — НЕМЕДЛЕННЫЙ хэндофф
+    if (analysis.clientNearby?.detected) {
+      return true;
+    }
+
+    // Покупка/продажа объекта — НЕМЕДЛЕННЫЙ хэндофф
+    if (analysis.purchaseSale?.detected) {
+      return true;
+    }
+
+    // Запрос на просмотр — хэндофф для согласования с менеджером
+    if (analysis.viewingRequest?.detected) {
+      return true;
+    }
+
+    // Субаренда / длительный договор — хэндофф
+    if (analysis.subleaseLongTerm?.detected) {
+      return true;
+    }
+
+    // Кастомизация офиса — хэндофф для уточнений
+    if (analysis.officeCustomization?.detected) {
       return true;
     }
 
@@ -780,6 +937,56 @@ export class SituationDetector {
         description: `⚠️ ПОДОЗРИТЕЛЬНАЯ АКТИВНОСТЬ: обнаружена попытка манипуляции / prompt injection. Паттерны: ${analysis.promptInjection.patterns.join(', ')}`,
         severity: RiskLevel.HIGH,
         detectedBy: 'SituationDetector.detectPromptInjection',
+      };
+    }
+
+    // Клиент рядом — немедленный handoff (HIGH)
+    if (analysis.clientNearby?.detected) {
+      return {
+        type: HandoffReasonType.SPECIAL_REQUEST,
+        description: `🚨 Клиент рядом с локацией: ${analysis.clientNearby.keywords.join(', ')}. Требуется немедленная реакция.`,
+        severity: RiskLevel.HIGH,
+        detectedBy: 'SituationDetector.detectClientNearby',
+      };
+    }
+
+    // Покупка/продажа — немедленный handoff (HIGH)
+    if (analysis.purchaseSale?.detected) {
+      return {
+        type: HandoffReasonType.SPECIAL_REQUEST,
+        description: `🏢 Запрос на покупку/продажу объекта: ${analysis.purchaseSale.keywords.join(', ')}. Немедленная передача менеджеру.`,
+        severity: RiskLevel.HIGH,
+        detectedBy: 'SituationDetector.detectPurchaseSale',
+      };
+    }
+
+    // Запрос на просмотр — handoff (MEDIUM)
+    if (analysis.viewingRequest?.detected) {
+      return {
+        type: HandoffReasonType.COMPLEX_QUERY,
+        description: `👀 Клиент хочет записаться на просмотр: ${analysis.viewingRequest.keywords.join(', ')}. Нужно согласовать дату/время с менеджером.`,
+        severity: RiskLevel.MEDIUM,
+        detectedBy: 'SituationDetector.detectViewingRequest',
+      };
+    }
+
+    // Субаренда / длительный договор — handoff (MEDIUM)
+    if (analysis.subleaseLongTerm?.detected) {
+      return {
+        type: HandoffReasonType.COMPLEX_QUERY,
+        description: `📋 Вопрос о субаренде/длительном договоре: ${analysis.subleaseLongTerm.keywords.join(', ')}. Обсуждается с менеджером на просмотре.`,
+        severity: RiskLevel.MEDIUM,
+        detectedBy: 'SituationDetector.detectSubleaseLongTerm',
+      };
+    }
+
+    // Кастомизация офиса — handoff (LOW)
+    if (analysis.officeCustomization?.detected) {
+      return {
+        type: HandoffReasonType.COMPLEX_QUERY,
+        description: `🔧 Запрос на кастомизацию офиса: ${analysis.officeCustomization.keywords.join(', ')}. Косметические улучшения недоступны, уточнения — у менеджера.`,
+        severity: RiskLevel.LOW,
+        detectedBy: 'SituationDetector.detectOfficeCustomization',
       };
     }
 

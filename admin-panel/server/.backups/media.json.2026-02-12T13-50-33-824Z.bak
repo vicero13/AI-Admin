@@ -1,0 +1,46 @@
+{
+  "enabled": true,
+  "basePath": "./media",
+  "objects": {
+    "sokol": {
+      "name": "Сокол",
+      "photos": [],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "",
+      "cianLink": "",
+      "keywords": [
+        "сокол",
+        "посёлок художников",
+        "sokol"
+      ]
+    },
+    "chistye-prudy": {
+      "name": "Чистые пруды",
+      "photos": [],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "media/presentations/8dd2288f.pdf",
+      "cianLink": "",
+      "keywords": [
+        "чистые пруды",
+        "усадьба демидовых",
+        "chistye prudy"
+      ]
+    },
+    "tsvetnoy": {
+      "name": "Цветной бульвар",
+      "photos": [],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "",
+      "cianLink": "",
+      "keywords": [
+        "цветной",
+        "цветной бульвар",
+        "tsvetnoy"
+      ]
+    }
+  },
+  "offices": {}
+}

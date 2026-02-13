@@ -48,6 +48,11 @@ export interface Office {
   area: number;
   pricePerMonth: number;
   link?: string;
+  mediaLinks?: {
+    video?: string;
+    photos?: string;
+    tour3d?: string;
+  };
   availableFrom: string;
   status: 'free' | 'rented' | 'maintenance';
   notes?: string;
@@ -413,7 +418,8 @@ export class KnowledgeBase {
           : office.status;
 
       const title = `Офис №${office.number} на ${office.capacity} мест (${locationName})`;
-      const description = `${office.capacity} рабочих мест, ${office.pricePerMonth.toLocaleString('ru-RU')} ₽/мес, ${availabilityText}`;
+      const areaText = office.area ? `, ${office.area} м²` : '';
+      const description = `${office.capacity} рабочих мест${areaText}, ${office.pricePerMonth.toLocaleString('ru-RU')} ₽/мес, ${availabilityText}`;
 
       // Ключевые слова для поиска
       const seatsKeywords = [
@@ -422,6 +428,7 @@ export class KnowledgeBase {
         `${office.capacity} мест`,
         `на ${office.capacity}`,
         `${office.capacity} чел`,
+        ...(office.area ? [`${office.area} м²`, `${office.area} кв`, `${office.area} метр`, 'площадь', 'квадратура'] : []),
       ];
 
       items.push({
@@ -452,6 +459,7 @@ export class KnowledgeBase {
             area: office.area,
             availableFrom: office.availableFrom,
             link: office.link,
+            mediaLinks: office.mediaLinks,
             officeNumber: office.number,
           },
         },

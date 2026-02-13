@@ -13,6 +13,8 @@ import dialogRoutes from './routes/dialogs';
 import statusRoutes from './routes/status';
 import knowledgeChatRoutes from './routes/knowledge-chat';
 import officesRoutes from './routes/offices';
+import mediaRoutes from './routes/media';
+import { PATHS } from './utils/paths';
 
 const app = express();
 const PORT = parseInt(process.env.ADMIN_PORT || '4000', 10);
@@ -55,6 +57,10 @@ app.use('/api/knowledge', apiLimiter, knowledgeRoutes);
 app.use('/api/dialogs', apiLimiter, dialogRoutes);
 app.use('/api/status', apiLimiter, statusRoutes);
 app.use('/api/admin/offices', apiLimiter, officesRoutes);
+app.use('/api/admin/media', apiLimiter, mediaRoutes);
+
+// Serve uploaded media files
+app.use('/media', express.static(PATHS.mediaFiles));
 
 // Serve built frontend (base path = /admin/)
 const distPath = path.resolve(__dirname, '../../dist');
