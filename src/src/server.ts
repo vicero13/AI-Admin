@@ -501,10 +501,11 @@ async function main() {
             await sleep(Math.min(result.typingDelay, 4000));
           }
 
-          // Отправить основной ответ
+          // Отправить основной ответ (последний рубеж: убираем [HANDOFF] если остался)
+          const finalText = result.responseText.replace(/\[HANDOFF\]\s*/gi, '').trim();
           await telegramAdapter.sendMessage(
             message.conversationId,
-            result.responseText,
+            finalText,
             businessConnectionId,
           );
 
@@ -533,13 +534,17 @@ async function main() {
               }
 
               if (addMsg.text) {
-                await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
-                await sleep(Math.min(1500 + Math.random() * 2000, 3000));
-                await telegramAdapter.sendMessage(
-                  message.conversationId,
-                  addMsg.text,
-                  businessConnectionId,
-                );
+                // Убираем маркер [HANDOFF] если он случайно попал в текст для клиента
+                const cleanText = addMsg.text.replace(/\[HANDOFF\]\s*/gi, '').trim();
+                if (cleanText) {
+                  await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+                  await sleep(Math.min(1500 + Math.random() * 2000, 3000));
+                  await telegramAdapter.sendMessage(
+                    message.conversationId,
+                    cleanText,
+                    businessConnectionId,
+                  );
+                }
               }
 
               if (addMsg.attachment) {
