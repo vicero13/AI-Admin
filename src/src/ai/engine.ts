@@ -283,15 +283,35 @@ export class AIEngine {
       let requiresHandoff = false;
       let handoffReason: HandoffReason | undefined;
 
-      // AI сам запросил handoff через маркер [HANDOFF]
+      // AI сам запросил handoff через маркер [HANDOFF] — определяем причину по тексту
       if (aiRequestedHandoff) {
         requiresHandoff = true;
+        const lowerText = responseText.toLowerCase();
+
+        let handoffType = HandoffReasonType.LOW_CONFIDENCE;
+        let handoffDesc = 'AI определил, что нужен менеджер';
+
+        if (/просмотр|подъехать|посмотреть|записать|визит|встреч/i.test(lowerText)) {
+          handoffType = HandoffReasonType.VIEWING_REQUEST;
+          handoffDesc = 'Клиент хочет записаться на просмотр';
+        } else if (/ссылк.*не работа|не открыва|некорректн|битая|сломан/i.test(lowerText)) {
+          handoffType = HandoffReasonType.BROKEN_LINK;
+          handoffDesc = 'Клиент сообщил о нерабочей ссылке';
+        } else if (/уточню|узнаю|спрошу|проверю|вернусь с ответом/i.test(lowerText)) {
+          handoffType = HandoffReasonType.COMPLEX_QUERY;
+          handoffDesc = 'AI не нашёл ответ в базе, нужна помощь менеджера';
+        } else if (/менеджер|оператор|человек|переключ/i.test(lowerText)) {
+          handoffType = HandoffReasonType.MANUAL_REQUEST;
+          handoffDesc = 'Клиент просит связать с менеджером';
+        }
+
         handoffReason = {
-          type: HandoffReasonType.LOW_CONFIDENCE,
-          description: 'AI определил, что нужен менеджер (маркер [HANDOFF])',
+          type: handoffType,
+          description: handoffDesc,
           severity: RiskLevel.MEDIUM,
           detectedBy: 'ai_engine_handoff_marker',
         };
+        this.logger.info(`[AIEngine] Handoff reason detected: ${handoffType} — ${handoffDesc}`);
       }
 
       if (confidence < 0.4) {
