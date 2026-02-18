@@ -96,6 +96,8 @@ export enum HandoffReasonType {
   MANUAL_REQUEST = 'manual_request',
   MEDIA_REQUEST = 'media_request',
   PROFANITY = 'profanity',
+  VIEWING_REQUEST = 'viewing_request',
+  BROKEN_LINK = 'broken_link',
 }
 
 export enum HandoffStatus {
