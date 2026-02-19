@@ -4,8 +4,8 @@ server:
 ai:
   provider: anthropic
   model: claude-sonnet-4-20250514
-  temperature: 0.7
-  maxTokens: 1024
+  temperature: 0.4
+  maxTokens: 4096
   cacheEnabled: true
   cacheTTL: 1800
 personality:
