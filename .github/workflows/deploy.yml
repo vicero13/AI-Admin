@@ -1,0 +1,49 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches:
+      - main        # запускается при каждом push в main
+  workflow_dispatch: # можно запустить вручную из GitHub
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Получить код
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Настроить buildx (для multi-platform сборки)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. Войти в Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 4. Собрать и залить образ (linux/amd64 для Dockhost)
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/telegram-bot-app:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/telegram-bot-app:${{ github.sha }}
+          cache-from: type=gha    # кэш между сборками — ускоряет повторные билды
+          cache-to: type=gha,mode=max
+
+      # 5. Уведомить Dockhost о новом образе (автоперезапуск)
+      - name: Trigger Dockhost redeploy
+        run: |
+          curl -s -X POST "${{ secrets.DOCKHOST_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{"image": "${{ secrets.DOCKERHUB_USERNAME }}/telegram-bot-app:latest"}' \
+          && echo "Dockhost redeploy triggered" \
+          || echo "Dockhost webhook not configured, skip"
