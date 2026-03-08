@@ -1,20 +1,25 @@
 import { NavLink } from 'react-router-dom';
+import { useLanguage } from '../../i18n/LanguageContext';
+import type { TranslationKey } from '../../i18n/translations';
 
-const links = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/offices', label: 'Офисы' },
-  { to: '/media', label: 'Медиа' },
-  { to: '/config', label: 'Configuration' },
-  { to: '/knowledge', label: 'Knowledge Base' },
-  { to: '/dialogs', label: 'Dialogs' },
+const links: { to: string; labelKey: TranslationKey }[] = [
+  { to: '/dashboard', labelKey: 'nav.dashboard' },
+  { to: '/locations', labelKey: 'nav.locations' },
+  { to: '/offices', labelKey: 'nav.offices' },
+  { to: '/media', labelKey: 'nav.media' },
+  { to: '/config', labelKey: 'nav.config' },
+  { to: '/knowledge', labelKey: 'nav.knowledge' },
+  { to: '/dialogs', labelKey: 'nav.dialogs' },
 ];
 
 export default function Sidebar() {
+  const { t } = useLanguage();
+
   return (
     <aside className="w-64 bg-gray-900 text-white min-h-screen flex flex-col">
       <div className="p-4 border-b border-gray-700">
-        <h1 className="text-xl font-bold">AI-Admin Panel</h1>
-        <p className="text-xs text-gray-400 mt-1">Management Console</p>
+        <h1 className="text-xl font-bold">{t('header.title')}</h1>
+        <p className="text-xs text-gray-400 mt-1">{t('header.subtitle')}</p>
       </div>
       <nav className="flex-1 p-3 space-y-1">
         {links.map((link) => (
@@ -29,7 +34,7 @@ export default function Sidebar() {
               }`
             }
           >
-            {link.label}
+            {t(link.labelKey)}
           </NavLink>
         ))}
       </nav>

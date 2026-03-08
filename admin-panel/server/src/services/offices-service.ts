@@ -2,12 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PATHS } from '../utils/paths';
 
-// Локации коворкингов
-export const LOCATIONS = [
-  { id: 'sokol', name: 'Сокол' },
-  { id: 'chistye-prudy', name: 'Чистые пруды' },
-  { id: 'tsvetnoy', name: 'Цветной бульвар' },
-] as const;
+import { getLocations as getLocationsFromFile } from './locations-service';
 
 export interface Office {
   id: string;
@@ -19,6 +14,7 @@ export interface Office {
   link?: string;
   availableFrom: string;
   status: 'free' | 'rented' | 'maintenance';
+  active: boolean;
   notes?: string;
   lastUpdated: number;
 }
@@ -52,5 +48,5 @@ export function saveOffices(offices: Office[]): void {
 }
 
 export function getLocations() {
-  return [...LOCATIONS];
+  return getLocationsFromFile();
 }

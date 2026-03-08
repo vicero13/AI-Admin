@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import MediaItemRow from './MediaItemRow';
 import FileUploader from './FileUploader';
+import PhotoGrid from './PhotoGrid';
+import VideoGrid from './VideoGrid';
 import TagInput from '../ui/TagInput';
 import type { MediaItem } from './MediaItemRow';
 
@@ -33,28 +34,8 @@ export default function ObjectMediaCard({ locationId, data, saving, onSave }: Ob
     setDirty(true);
   };
 
-  const addPhoto = () => {
-    update({ photos: [...local.photos, { id: genId(), type: 'photo', url: '', caption: '', tags: [] }] });
-  };
-
-  const addVideo = () => {
-    update({ videos: [...local.videos, { id: genId(), type: 'video', url: '', caption: '', tags: [] }] });
-  };
-
-  const updatePhoto = (index: number, item: MediaItem) => {
-    const photos = [...local.photos];
-    photos[index] = item;
-    update({ photos });
-  };
-
   const deletePhoto = (index: number) => {
     update({ photos: local.photos.filter((_, i) => i !== index) });
-  };
-
-  const updateVideo = (index: number, item: MediaItem) => {
-    const videos = [...local.videos];
-    videos[index] = item;
-    update({ videos });
   };
 
   const deleteVideo = (index: number) => {
@@ -101,29 +82,28 @@ export default function ObjectMediaCard({ locationId, data, saving, onSave }: Ob
         <div className="p-4 pt-0 space-y-6 border-t border-gray-100">
           {/* Photos */}
           <section>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-medium text-gray-700">Фотографии</h4>
-              <button onClick={addPhoto} className="text-sm text-blue-600 hover:text-blue-800">
-                + Добавить фото
-              </button>
-            </div>
-            <div className="space-y-2">
-              {local.photos.map((photo, i) => (
-                <MediaItemRow
-                  key={photo.id}
-                  item={photo}
-                  onChange={(item) => updatePhoto(i, item)}
-                  onDelete={() => deletePhoto(i)}
-                />
-              ))}
+            <h4 className="text-sm font-medium text-gray-700 mb-2">
+              Фотографии {local.photos.length > 0 && `(${local.photos.length})`}
+            </h4>
+            <PhotoGrid items={local.photos} onDelete={deletePhoto} />
+            <div className="mt-2">
               <FileUploader
                 accept="image/jpeg,image/png,image/webp"
-                label="Перетащите фото или нажмите для загрузки"
+                label="Перетащите фото или нажмите для загрузки (можно несколько)"
+                multiple
                 onUploaded={(result) => {
                   update({
                     photos: [
                       ...local.photos,
                       { id: genId(), type: 'photo', filePath: result.filePath, caption: '', tags: [] },
+                    ],
+                  });
+                }}
+                onMultiUploaded={(results) => {
+                  update({
+                    photos: [
+                      ...local.photos,
+                      ...results.map(r => ({ id: genId(), type: 'photo' as const, filePath: r.filePath, caption: '', tags: [] })),
                     ],
                   });
                 }}
@@ -133,29 +113,28 @@ export default function ObjectMediaCard({ locationId, data, saving, onSave }: Ob
 
           {/* Videos */}
           <section>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-medium text-gray-700">Видео</h4>
-              <button onClick={addVideo} className="text-sm text-blue-600 hover:text-blue-800">
-                + Добавить видео
-              </button>
-            </div>
-            <div className="space-y-2">
-              {local.videos.map((video, i) => (
-                <MediaItemRow
-                  key={video.id}
-                  item={video}
-                  onChange={(item) => updateVideo(i, item)}
-                  onDelete={() => deleteVideo(i)}
-                />
-              ))}
+            <h4 className="text-sm font-medium text-gray-700 mb-2">
+              Видео {local.videos.length > 0 && `(${local.videos.length})`}
+            </h4>
+            <VideoGrid items={local.videos} onDelete={deleteVideo} />
+            <div className="mt-2">
               <FileUploader
                 accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-                label="Перетащите видео или нажмите для загрузки"
+                label="Перетащите видео или нажмите для загрузки (можно несколько)"
+                multiple
                 onUploaded={(result) => {
                   update({
                     videos: [
                       ...local.videos,
                       { id: genId(), type: 'video', filePath: result.filePath, caption: '', tags: [] },
+                    ],
+                  });
+                }}
+                onMultiUploaded={(results) => {
+                  update({
+                    videos: [
+                      ...local.videos,
+                      ...results.map(r => ({ id: genId(), type: 'video' as const, filePath: r.filePath, caption: '', tags: [] })),
                     ],
                   });
                 }}

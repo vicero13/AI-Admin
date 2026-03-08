@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import { execFileSync } from 'child_process';
 import TelegramBot from 'node-telegram-bot-api';
 import { v4 as uuidv4 } from 'uuid';
 import { Request, Response } from 'express';
@@ -597,11 +600,50 @@ export class TelegramAdapter {
     }
 
     try {
-      const sendOpts: Record<string, any> = {};
+      // Конвертировать .MOV и другие не-MP4 в .MP4 для корректного отображения в Telegram
+      let videoPath = video;
+      let tempMp4: string | null = null;
+      if (fs.existsSync(video)) {
+        const ext = path.extname(video).toLowerCase();
+        if (ext !== '.mp4') {
+          try {
+            let ffmpegBin: string;
+            try {
+              ffmpegBin = require('ffmpeg-static');
+            } catch {
+              ffmpegBin = 'ffmpeg'; // fallback to system ffmpeg
+            }
+            tempMp4 = video.replace(/\.[^.]+$/, '_converted.mp4');
+            // Если уже конвертировали ранее — используем кэш
+            if (!fs.existsSync(tempMp4)) {
+              log.info('Converting video to MP4 for Telegram', { source: video, target: tempMp4 });
+              execFileSync(ffmpegBin, [
+                '-i', video,
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-movflags', '+faststart',
+                '-y',
+                tempMp4,
+              ], { timeout: 120000 });
+            }
+            videoPath = tempMp4;
+          } catch (convErr) {
+            log.warn('Video conversion failed, sending original', { video, error: String(convErr) });
+            videoPath = video;
+            tempMp4 = null;
+          }
+        }
+      }
+
+      const sendOpts: Record<string, any> = {
+        supports_streaming: true,
+      };
       if (options?.caption) sendOpts.caption = options.caption;
       if (bizId) sendOpts.business_connection_id = bizId;
 
-      const sentMessage = await this.bot.sendVideo(conversationId, video, sendOpts);
+      const sentMessage = await this.bot.sendVideo(conversationId, videoPath, sendOpts);
       this.metrics.messagesSent++;
 
       return {

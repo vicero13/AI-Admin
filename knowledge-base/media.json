@@ -112,6 +112,17 @@
         "цветной бульвар",
         "tsvetnoy"
       ]
+    },
+    "nikitskaya": {
+      "name": "Никитская",
+      "photos": [],
+      "videos": [],
+      "tour3d": "",
+      "presentation": "",
+      "cianLink": "",
+      "keywords": [
+        "никитская"
+      ]
     }
   },
   "offices": {
@@ -124,6 +135,36 @@
           "id": "tbpfsg28",
           "type": "video",
           "filePath": "media/videos/a68e33c6.MP4",
+          "caption": "",
+          "tags": []
+        }
+      ],
+      "keywords": []
+    },
+    "cp-104": {
+      "name": "Чистые пруды — 104",
+      "address": "",
+      "photos": [],
+      "videos": [
+        {
+          "id": "1d3cndkj",
+          "type": "video",
+          "filePath": "media/videos/38fd1112.MOV",
+          "caption": "",
+          "tags": []
+        }
+      ],
+      "keywords": []
+    },
+    "1c75e973": {
+      "name": "Чистые пруды — 106",
+      "address": "",
+      "photos": [],
+      "videos": [
+        {
+          "id": "uonqsksr",
+          "type": "video",
+          "filePath": "media/videos/e4869b0e.MOV",
           "caption": "",
           "tags": []
         }

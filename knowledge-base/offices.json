@@ -7,10 +7,11 @@
     "area": 20,
     "pricePerMonth": 120000,
     "link": "https://www.cian.ru/rent/commercial/324160883/",
-    "availableFrom": "2026-01-01",
+    "availableFrom": "available",
     "status": "free",
+    "active": true,
     "notes": "Отдельный домик в Посёлке Художников",
-    "lastUpdated": 1770898810411
+    "lastUpdated": 1772966918510
   },
   {
     "id": "sokol-4-100",
@@ -19,11 +20,12 @@
     "capacity": 4,
     "area": 15,
     "pricePerMonth": 100000,
-    "link": "https://www.cian.ru/rent/commercial/307151313/",
+    "link": "https://elasticwork.space/sokol/tproduct/860956762-732196551781-domik-1-na-sokole-polovina",
     "availableFrom": "available",
     "status": "free",
+    "active": true,
     "notes": "Половина домика в Посёлке Художников",
-    "lastUpdated": 1770898814098
+    "lastUpdated": 1772968657526
   },
   {
     "id": "sokol-6-216",
@@ -32,37 +34,12 @@
     "capacity": 8,
     "area": 35,
     "pricePerMonth": 200000,
-    "link": "https://www.cian.ru/coworking-7772/?offerId=305289538&mlSearchSessionGuid=f6fdfe608e3ab801cb2e0b2e321fafbb",
+    "link": "https://www.cian.ru/rent/commercial/305289538/",
     "availableFrom": "available",
     "status": "free",
+    "active": true,
     "notes": "Большой домик на 6 мест",
-    "lastUpdated": 1770907092687
-  },
-  {
-    "id": "cp-311",
-    "locationId": "chistye-prudy",
-    "number": "311",
-    "capacity": 5,
-    "area": 20,
-    "pricePerMonth": 190000,
-    "link": "",
-    "availableFrom": "available",
-    "status": "free",
-    "notes": "Усадьба Демидовых",
-    "lastUpdated": 1770898825188
-  },
-  {
-    "id": "cp-314",
-    "locationId": "chistye-prudy",
-    "number": "314",
-    "capacity": 6,
-    "area": 30,
-    "pricePerMonth": 228000,
-    "link": "",
-    "availableFrom": "available",
-    "status": "free",
-    "notes": "Усадьба Демидовых",
-    "lastUpdated": 1770898832629
+    "lastUpdated": 1772966952582
   },
   {
     "id": "cp-104",
@@ -71,11 +48,12 @@
     "capacity": 10,
     "area": 39,
     "pricePerMonth": 380000,
-    "link": "",
+    "link": "https://elasticwork.space/myasnitskaya/tproduct/861505074-790134873471-smart-ofis-104-na-chistih-prudah",
     "availableFrom": "available",
     "status": "free",
+    "active": true,
     "notes": "Усадьба Демидовых",
-    "lastUpdated": 1770898839832
+    "lastUpdated": 1772967245836
   },
   {
     "id": "cp-210",
@@ -85,23 +63,11 @@
     "area": 32,
     "pricePerMonth": 304000,
     "link": "",
-    "availableFrom": "2026-04-01",
+    "availableFrom": "available",
     "status": "rented",
+    "active": true,
     "notes": "Усадьба Демидовых",
-    "lastUpdated": 1770898845632
-  },
-  {
-    "id": "cp-213",
-    "locationId": "chistye-prudy",
-    "number": "213",
-    "capacity": 8,
-    "area": 31,
-    "pricePerMonth": 304000,
-    "link": "",
-    "availableFrom": "2026-10-10",
-    "status": "rented",
-    "notes": "Усадьба Демидовых",
-    "lastUpdated": 1770898861895
+    "lastUpdated": 1772967272728
   },
   {
     "id": "8818e1bc",
@@ -111,9 +77,24 @@
     "area": 40,
     "pricePerMonth": 380000,
     "link": "https://www.cian.ru/rent/commercial/302077609/",
-    "availableFrom": "2026-02-19",
+    "availableFrom": "available",
     "status": "free",
+    "active": true,
     "notes": "",
-    "lastUpdated": 1770383955387
+    "lastUpdated": 1772967261623
+  },
+  {
+    "id": "1c75e973",
+    "locationId": "chistye-prudy",
+    "number": "106",
+    "capacity": 10,
+    "area": 40,
+    "pricePerMonth": 380000,
+    "link": "https://www.cian.ru/rent/commercial/323309956/",
+    "availableFrom": "available",
+    "status": "free",
+    "active": true,
+    "notes": "",
+    "lastUpdated": 1772968387720
   }
 ]

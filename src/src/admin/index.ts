@@ -10,6 +10,7 @@ import { createStatsRouter } from './routes/stats';
 import { createConverterRouter } from './routes/converter';
 import { createChatConfigRouter } from './routes/chat-config';
 import { createOfficesRouter } from './routes/offices';
+import { createLocationsRouter } from './routes/locations';
 
 export interface AdminDependencies {
   dataLayer: any;
@@ -55,6 +56,7 @@ export function createAdminRouter(deps: AdminDependencies): Router {
   router.use('/api/admin/converter', apiLimiter, auth, createConverterRouter(deps));
   router.use('/api/admin/chat-config', apiLimiter, auth, createChatConfigRouter(deps));
   router.use('/api/admin/offices', apiLimiter, auth, createOfficesRouter(deps));
+  router.use('/api/admin/locations', apiLimiter, auth, createLocationsRouter(deps));
 
   // Serve frontend static files
   const uiPath = path.join(__dirname, 'ui', 'dist');

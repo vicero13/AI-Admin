@@ -5,18 +5,21 @@ import { v4 as uuidv4 } from 'uuid';
 import { readJsonFile, writeJsonFile } from '../services/knowledge-service';
 import type { AdminDependencies } from '../index';
 
-// Локации коворкингов
-export const LOCATIONS = [
-  { id: 'sokol', name: 'Сокол' },
-  { id: 'chistye-prudy', name: 'Чистые пруды' },
-  { id: 'tsvetnoy', name: 'Цветной бульвар' },
-] as const;
+interface LocationEntry {
+  id: string;
+  name: string;
+  active: boolean;
+}
 
-export type LocationId = typeof LOCATIONS[number]['id'];
+function loadLocations(basePath: string): LocationEntry[] {
+  const filePath = path.join(basePath, 'locations.json');
+  if (!fs.existsSync(filePath)) return [];
+  return readJsonFile(filePath) as LocationEntry[];
+}
 
 export interface Office {
   id: string;
-  locationId: LocationId;       // Объект (локация)
+  locationId: string;            // Объект (локация)
   number: string;               // Номер офиса
   capacity: number;             // Кол-во рабочих мест
   area: number;                 // Квадратура (м²)
@@ -24,6 +27,7 @@ export interface Office {
   link?: string;                // Ссылка (ЦИАН и т.д.)
   availableFrom: string;        // Дата освобождения (ISO date или 'available')
   status: 'free' | 'rented' | 'maintenance';
+  active: boolean;              // Активен (виден агенту) / В архиве (скрыт)
   notes?: string;
   lastUpdated: number;
 }
@@ -46,9 +50,14 @@ export function createOfficesRouter(deps: AdminDependencies): Router {
   const router = Router();
   const bp = deps.knowledgeBasePath;
 
-  // Get locations list
+  // Get locations list (active only)
   router.get('/locations', (_req: Request, res: Response) => {
-    res.json(LOCATIONS);
+    try {
+      const locations = loadLocations(bp);
+      res.json(locations.filter(l => l.active !== false));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Get all offices
@@ -61,11 +70,11 @@ export function createOfficesRouter(deps: AdminDependencies): Router {
     }
   });
 
-  // Get available offices only
+  // Get available offices only (free + active)
   router.get('/available', (_req: Request, res: Response) => {
     try {
       const offices = loadOffices(bp);
-      res.json(offices.filter(o => o.status === 'free'));
+      res.json(offices.filter(o => o.status === 'free' && o.active !== false));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -85,6 +94,7 @@ export function createOfficesRouter(deps: AdminDependencies): Router {
         link: req.body.link || '',
         availableFrom: req.body.availableFrom || 'available',
         status: req.body.status || 'free',
+        active: req.body.active !== false,
         notes: req.body.notes,
         lastUpdated: Date.now(),
       };
@@ -119,18 +129,19 @@ export function createOfficesRouter(deps: AdminDependencies): Router {
     }
   });
 
-  // Delete office
-  router.delete('/:id', (req: Request, res: Response) => {
+  // Toggle office active/archive status
+  router.patch('/:id/toggle-active', (req: Request, res: Response) => {
     try {
       const offices = loadOffices(bp);
       const idx = offices.findIndex(o => o.id === req.params.id);
       if (idx === -1) {
         return res.status(404).json({ error: 'Office not found' });
       }
-      offices.splice(idx, 1);
+      offices[idx].active = !offices[idx].active;
+      offices[idx].lastUpdated = Date.now();
       saveOffices(bp, offices);
       deps.knowledgeBase.reload();
-      res.json({ success: true });
+      res.json(offices[idx]);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

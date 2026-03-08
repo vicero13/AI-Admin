@@ -13,6 +13,7 @@ import dialogRoutes from './routes/dialogs';
 import statusRoutes from './routes/status';
 import knowledgeChatRoutes from './routes/knowledge-chat';
 import officesRoutes from './routes/offices';
+import locationsRoutes from './routes/locations';
 import mediaRoutes from './routes/media';
 import { PATHS } from './utils/paths';
 
@@ -57,6 +58,7 @@ app.use('/api/knowledge', apiLimiter, knowledgeRoutes);
 app.use('/api/dialogs', apiLimiter, dialogRoutes);
 app.use('/api/status', apiLimiter, statusRoutes);
 app.use('/api/admin/offices', apiLimiter, officesRoutes);
+app.use('/api/admin/locations', apiLimiter, locationsRoutes);
 app.use('/api/admin/media', apiLimiter, mediaRoutes);
 
 // Serve uploaded media files

@@ -33,6 +33,7 @@ router.post('/', (req: Request, res: Response) => {
       link: req.body.link || '',
       availableFrom: req.body.availableFrom || 'available',
       status: req.body.status || 'free',
+      active: req.body.active !== false,
       notes: req.body.notes,
       lastUpdated: Date.now(),
     };
@@ -65,17 +66,18 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:id — удалить офис
-router.delete('/:id', (req: Request, res: Response) => {
+// PATCH /:id/toggle-active — переключить активность офиса
+router.patch('/:id/toggle-active', (req: Request, res: Response) => {
   try {
     const offices = getOffices();
     const idx = offices.findIndex(o => o.id === req.params.id);
     if (idx === -1) {
       return res.status(404).json({ error: 'Office not found' });
     }
-    offices.splice(idx, 1);
+    offices[idx].active = !offices[idx].active;
+    offices[idx].lastUpdated = Date.now();
     saveOffices(offices);
-    res.json({ success: true });
+    res.json(offices[idx]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

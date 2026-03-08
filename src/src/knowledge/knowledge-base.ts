@@ -55,16 +55,17 @@ export interface Office {
   };
   availableFrom: string;
   status: 'free' | 'rented' | 'maintenance';
+  active?: boolean;              // Активен (виден агенту) / В архиве (скрыт). По умолчанию true.
   notes?: string;
   lastUpdated: number;
 }
 
-// Названия локаций
-const LOCATION_NAMES: Record<string, string> = {
-  'sokol': 'Сокол',
-  'chistye-prudy': 'Чистые пруды',
-  'tsvetnoy': 'Цветной бульвар',
-};
+// Интерфейс локации из locations.json
+interface LocationEntry {
+  id: string;
+  name: string;
+  active?: boolean;
+}
 
 // --- KnowledgeBase Class ---
 
@@ -80,6 +81,7 @@ export class KnowledgeBase {
   private policies: Policy[] = [];
   private dialogExamples: DialogExample[] = [];
   private knowledgeItems: KnowledgeItem[] = [];
+  private locationNames: Record<string, string> = {};
 
   private lastLoadedAt: number = 0;
   private loadErrors: string[] = [];
@@ -138,9 +140,23 @@ export class KnowledgeBase {
       path.join(this.config.basePath, 'services.json'),
     )) ?? [];
 
-    this.offices = (await this.loadJsonFile<Office[]>(
+    // Загружаем локации из locations.json → строим динамический маппинг имён
+    const allLocations = (await this.loadJsonFile<LocationEntry[]>(
+      path.join(this.config.basePath, 'locations.json'),
+    )) ?? [];
+    const activeLocations = allLocations.filter(l => l.active !== false);
+    this.locationNames = {};
+    for (const loc of activeLocations) {
+      this.locationNames[loc.id] = loc.name;
+    }
+
+    const allOffices = (await this.loadJsonFile<Office[]>(
       path.join(this.config.basePath, 'offices.json'),
     )) ?? [];
+    // Фильтруем неактивные (архивные) офисы + офисы из неактивных локаций
+    this.offices = allOffices.filter(o =>
+      o.active !== false && this.locationNames[o.locationId] !== undefined
+    );
 
     this.faq = (await this.loadJsonFilesFromDir<FAQItem[]>(
       path.join(this.config.basePath, 'faq'),
@@ -443,7 +459,7 @@ export class KnowledgeBase {
 
     // Offices (из offices.json) — ОСНОВНОЙ ИСТОЧНИК ДАННЫХ ОБ ОФИСАХ
     for (const office of this.offices) {
-      const locationName = LOCATION_NAMES[office.locationId] || office.locationId;
+      const locationName = this.locationNames[office.locationId] || office.locationId;
       const availabilityText = this.formatAvailability(office.availableFrom, office.status);
       const isAvailable = availabilityText === 'свободен сейчас';
 

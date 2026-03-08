@@ -11,9 +11,18 @@
       "В каких районах есть офисы?",
       "Какое метро?"
     ],
-    "relatedQuestions": ["faq-location-002", "faq-location-003", "faq-location-004"],
+    "relatedQuestions": [
+      "faq-location-002",
+      "faq-location-003",
+      "faq-location-004"
+    ],
     "popularity": 100,
-    "tags": ["локация", "адрес", "метро", "расположение"]
+    "tags": [
+      "локация",
+      "адрес",
+      "метро",
+      "расположение"
+    ]
   },
   {
     "faqId": "faq-location-002",
@@ -26,9 +35,17 @@
       "Мясницкая коворкинг",
       "Усадьба Демидовых"
     ],
-    "relatedQuestions": ["faq-pricing-001", "faq-viewing-001"],
+    "relatedQuestions": [
+      "faq-pricing-001",
+      "faq-viewing-001"
+    ],
     "popularity": 90,
-    "tags": ["чистые пруды", "мясницкая", "локация", "усадьба демидовых"]
+    "tags": [
+      "чистые пруды",
+      "мясницкая",
+      "локация",
+      "усадьба демидовых"
+    ]
   },
   {
     "faqId": "faq-location-003",
@@ -42,9 +59,17 @@
       "Домик в аренду",
       "Саврасова"
     ],
-    "relatedQuestions": ["faq-pricing-002"],
+    "relatedQuestions": [
+      "faq-pricing-002"
+    ],
     "popularity": 85,
-    "tags": ["сокол", "посёлок художников", "домик", "локация", "саврасова"]
+    "tags": [
+      "сокол",
+      "посёлок художников",
+      "домик",
+      "локация",
+      "саврасова"
+    ]
   },
   {
     "faqId": "faq-location-004",
@@ -58,9 +83,20 @@
       "Колобовский переулок",
       "Офис на 2 человека на трубной"
     ],
-    "relatedQuestions": ["faq-location-001", "faq-location-002", "faq-location-003"],
+    "relatedQuestions": [
+      "faq-location-001",
+      "faq-location-002",
+      "faq-location-003"
+    ],
     "popularity": 70,
-    "tags": ["цветной", "трубная", "центр", "локация", "колобовский", "нет офисов"]
+    "tags": [
+      "цветной",
+      "трубная",
+      "центр",
+      "локация",
+      "колобовский",
+      "нет офисов"
+    ]
   },
   {
     "faqId": "faq-pricing-001",
@@ -75,9 +111,17 @@
       "Цена за место",
       "Почём офис?"
     ],
-    "relatedQuestions": ["faq-included-001", "faq-deposit-001"],
+    "relatedQuestions": [
+      "faq-included-001",
+      "faq-deposit-001"
+    ],
     "popularity": 100,
-    "tags": ["цена", "стоимость", "прайс", "аренда"]
+    "tags": [
+      "цена",
+      "стоимость",
+      "прайс",
+      "аренда"
+    ]
   },
   {
     "faqId": "faq-included-001",
@@ -91,9 +135,17 @@
       "Уборка входит?",
       "Мебель есть?"
     ],
-    "relatedQuestions": ["faq-pricing-001"],
+    "relatedQuestions": [
+      "faq-pricing-001"
+    ],
     "popularity": 85,
-    "tags": ["включено", "входит", "интернет", "уборка", "мебель"]
+    "tags": [
+      "включено",
+      "входит",
+      "интернет",
+      "уборка",
+      "мебель"
+    ]
   },
   {
     "faqId": "faq-deposit-001",
@@ -105,9 +157,15 @@
       "Нужен залог?",
       "Сколько депозит?"
     ],
-    "relatedQuestions": ["faq-contract-001"],
+    "relatedQuestions": [
+      "faq-contract-001"
+    ],
     "popularity": 75,
-    "tags": ["депозит", "залог", "оплата"]
+    "tags": [
+      "депозит",
+      "залог",
+      "оплата"
+    ]
   },
   {
     "faqId": "faq-contract-001",
@@ -121,9 +179,17 @@
       "Условия договора",
       "Можно расторгнуть?"
     ],
-    "relatedQuestions": ["faq-deposit-001"],
+    "relatedQuestions": [
+      "faq-deposit-001"
+    ],
     "popularity": 60,
-    "tags": ["договор", "срок", "аренда", "условия", "расторжение"]
+    "tags": [
+      "договор",
+      "срок",
+      "аренда",
+      "условия",
+      "расторжение"
+    ]
   },
   {
     "faqId": "faq-legal-001",
@@ -137,9 +203,17 @@
       "Какое налогообложение?",
       "УСН или ОСНО?"
     ],
-    "relatedQuestions": ["faq-contract-001"],
+    "relatedQuestions": [
+      "faq-contract-001"
+    ],
     "popularity": 55,
-    "tags": ["юрлицо", "ООО", "ИП", "УСН", "налоги"]
+    "tags": [
+      "юрлицо",
+      "ООО",
+      "ИП",
+      "УСН",
+      "налоги"
+    ]
   },
   {
     "faqId": "faq-furniture-001",
@@ -152,9 +226,17 @@
       "Что из мебели?",
       "Можно свою мебель?"
     ],
-    "relatedQuestions": ["faq-included-001", "faq-customization-001"],
+    "relatedQuestions": [
+      "faq-included-001",
+      "faq-customization-001"
+    ],
     "popularity": 50,
-    "tags": ["мебель", "стол", "стул", "оборудование"]
+    "tags": [
+      "мебель",
+      "стол",
+      "стул",
+      "оборудование"
+    ]
   },
   {
     "faqId": "faq-customization-001",
@@ -167,9 +249,17 @@
       "Дополнительная мебель",
       "Можно что-то изменить?"
     ],
-    "relatedQuestions": ["faq-furniture-001", "faq-viewing-001"],
+    "relatedQuestions": [
+      "faq-furniture-001",
+      "faq-viewing-001"
+    ],
     "popularity": 40,
-    "tags": ["перекраска", "ремонт", "изменения", "кастомизация"],
+    "tags": [
+      "перекраска",
+      "ремонт",
+      "изменения",
+      "кастомизация"
+    ],
     "deferToViewing": true
   },
   {
@@ -183,9 +273,16 @@
       "Когда можно приехать?",
       "Записаться на просмотр"
     ],
-    "relatedQuestions": ["faq-location-001"],
+    "relatedQuestions": [
+      "faq-location-001"
+    ],
     "popularity": 95,
-    "tags": ["просмотр", "посмотреть", "приехать", "визит"]
+    "tags": [
+      "просмотр",
+      "посмотреть",
+      "приехать",
+      "визит"
+    ]
   },
   {
     "faqId": "faq-meeting-room-001",
@@ -197,9 +294,16 @@
       "Есть где провести встречу?",
       "Зум-комната есть?"
     ],
-    "relatedQuestions": ["faq-included-001"],
+    "relatedQuestions": [
+      "faq-included-001"
+    ],
     "popularity": 65,
-    "tags": ["переговорная", "встреча", "бронирование", "зум"]
+    "tags": [
+      "переговорная",
+      "встреча",
+      "бронирование",
+      "зум"
+    ]
   },
   {
     "faqId": "faq-internet-001",
@@ -211,9 +315,15 @@
       "Скорость интернета",
       "Интернет включён?"
     ],
-    "relatedQuestions": ["faq-included-001"],
+    "relatedQuestions": [
+      "faq-included-001"
+    ],
     "popularity": 60,
-    "tags": ["интернет", "wifi", "связь"]
+    "tags": [
+      "интернет",
+      "wifi",
+      "связь"
+    ]
   },
   {
     "faqId": "faq-access-001",
@@ -225,9 +335,16 @@
       "Можно ночью работать?",
       "Круглосуточный доступ?"
     ],
-    "relatedQuestions": ["faq-included-001"],
+    "relatedQuestions": [
+      "faq-included-001"
+    ],
     "popularity": 55,
-    "tags": ["режим", "доступ", "24/7", "время работы"]
+    "tags": [
+      "режим",
+      "доступ",
+      "24/7",
+      "время работы"
+    ]
   },
   {
     "faqId": "faq-current-offers-001",
@@ -249,9 +366,19 @@
       "Покажите все варианты",
       "Все предложения"
     ],
-    "relatedQuestions": ["faq-pricing-001", "faq-location-001"],
+    "relatedQuestions": [
+      "faq-pricing-001",
+      "faq-location-001"
+    ],
     "popularity": 95,
-    "tags": ["актуально", "свободные", "предложения", "варианты", "доступно", "все офисы"],
+    "tags": [
+      "актуально",
+      "свободные",
+      "предложения",
+      "варианты",
+      "доступно",
+      "все офисы"
+    ],
     "showAllOffices": true
   },
   {
@@ -266,9 +393,18 @@
       "На один день",
       "Аренда на час"
     ],
-    "relatedQuestions": ["faq-pricing-001", "faq-contract-001"],
+    "relatedQuestions": [
+      "faq-pricing-001",
+      "faq-contract-001"
+    ],
     "popularity": 45,
-    "tags": ["однодневная", "дневной", "тариф", "почасовая", "на день"]
+    "tags": [
+      "однодневная",
+      "дневной",
+      "тариф",
+      "почасовая",
+      "на день"
+    ]
   },
   {
     "faqId": "faq-openspace-001",
@@ -281,9 +417,17 @@
       "Shared office?",
       "Общий зал?"
     ],
-    "relatedQuestions": ["faq-pricing-001", "faq-location-001"],
+    "relatedQuestions": [
+      "faq-pricing-001",
+      "faq-location-001"
+    ],
     "popularity": 40,
-    "tags": ["опенспейс", "открытое", "общий зал", "shared"]
+    "tags": [
+      "опенспейс",
+      "открытое",
+      "общий зал",
+      "shared"
+    ]
   },
   {
     "faqId": "faq-conference-hall-001",
@@ -296,9 +440,16 @@
       "Зал для презентаций?",
       "Зал на 20 человек?"
     ],
-    "relatedQuestions": ["faq-meeting-room-001"],
+    "relatedQuestions": [
+      "faq-meeting-room-001"
+    ],
     "popularity": 35,
-    "tags": ["конференц-зал", "зал", "презентация", "большое помещение"]
+    "tags": [
+      "конференц-зал",
+      "зал",
+      "презентация",
+      "большое помещение"
+    ]
   },
   {
     "faqId": "faq-individual-001",
@@ -311,9 +462,17 @@
       "Без ИП можно?",
       "Договор на физ. лицо"
     ],
-    "relatedQuestions": ["faq-legal-001", "faq-contract-001"],
+    "relatedQuestions": [
+      "faq-legal-001",
+      "faq-contract-001"
+    ],
     "popularity": 45,
-    "tags": ["физлицо", "физическое лицо", "без ИП", "договор"]
+    "tags": [
+      "физлицо",
+      "физическое лицо",
+      "без ИП",
+      "договор"
+    ]
   },
   {
     "faqId": "faq-storage-001",
@@ -326,9 +485,16 @@
       "Можно хранить вещи?",
       "Есть склад?"
     ],
-    "relatedQuestions": ["faq-furniture-001"],
+    "relatedQuestions": [
+      "faq-furniture-001"
+    ],
     "popularity": 25,
-    "tags": ["хранение", "кладовка", "склад", "вещи"]
+    "tags": [
+      "хранение",
+      "кладовка",
+      "склад",
+      "вещи"
+    ]
   },
   {
     "faqId": "faq-food-001",
@@ -342,9 +508,17 @@
       "Где поесть?",
       "Можно заказать доставку?"
     ],
-    "relatedQuestions": ["faq-included-001"],
+    "relatedQuestions": [
+      "faq-included-001"
+    ],
     "popularity": 35,
-    "tags": ["еда", "кухня", "кофе", "доставка", "чай"]
+    "tags": [
+      "еда",
+      "кухня",
+      "кофе",
+      "доставка",
+      "чай"
+    ]
   },
   {
     "faqId": "faq-internet-speed-001",
@@ -357,9 +531,18 @@
       "Интернет быстрый?",
       "Хватит ли для видеозвонков?"
     ],
-    "relatedQuestions": ["faq-internet-001", "faq-included-001"],
+    "relatedQuestions": [
+      "faq-internet-001",
+      "faq-included-001"
+    ],
     "popularity": 40,
-    "tags": ["скорость", "мегабит", "интернет", "wifi", "провайдер"]
+    "tags": [
+      "скорость",
+      "мегабит",
+      "интернет",
+      "wifi",
+      "провайдер"
+    ]
   },
   {
     "faqId": "faq-renovation-001",
@@ -372,9 +555,18 @@
       "Можно поменять дверь?",
       "Установить камеры?"
     ],
-    "relatedQuestions": ["faq-customization-001", "faq-furniture-001"],
+    "relatedQuestions": [
+      "faq-customization-001",
+      "faq-furniture-001"
+    ],
     "popularity": 30,
-    "tags": ["ремонт", "перекраска", "дверь", "камеры", "установить"],
+    "tags": [
+      "ремонт",
+      "перекраска",
+      "дверь",
+      "камеры",
+      "установить"
+    ],
     "handoffTrigger": "office_customization"
   },
   {
@@ -391,9 +583,17 @@
       "Можно с животными?",
       "Dog friendly?"
     ],
-    "relatedQuestions": ["faq-included-001"],
+    "relatedQuestions": [
+      "faq-included-001"
+    ],
     "popularity": 40,
-    "tags": ["собака", "дог-френдли", "питомец", "животные", "dog friendly"],
+    "tags": [
+      "собака",
+      "дог-френдли",
+      "питомец",
+      "животные",
+      "dog friendly"
+    ],
     "onlyOnDirectQuestion": true,
     "onlyOnDirectQuestionNote": "НЕ упоминать дог-френдли самостоятельно. Отвечать ТОЛЬКО если клиент прямо спросил про собак/животных/питомцев."
   },
@@ -409,9 +609,18 @@
       "Что рядом с Чистыми прудами?",
       "Что есть рядом с офисом на Мясницкой?"
     ],
-    "relatedQuestions": ["faq-location-002"],
+    "relatedQuestions": [
+      "faq-location-002"
+    ],
     "popularity": 20,
-    "tags": ["здание", "усадьба", "демидовых", "чистые пруды", "история", "рядом"],
+    "tags": [
+      "здание",
+      "усадьба",
+      "демидовых",
+      "чистые пруды",
+      "история",
+      "рядом"
+    ],
     "onlyOnDirectQuestion": true,
     "onlyOnDirectQuestionNote": "Описание здания и достопримечательности рядом — только если клиент спрашивает напрямую. НЕ упоминать проактивно."
   },
@@ -427,10 +636,38 @@
       "Что рядом с офисом на Соколе?",
       "Есть 3D-тур?"
     ],
-    "relatedQuestions": ["faq-location-003"],
+    "relatedQuestions": [
+      "faq-location-003"
+    ],
     "popularity": 20,
-    "tags": ["здание", "посёлок", "художников", "сокол", "домики", "веранда", "сад", "рядом", "3d тур"],
+    "tags": [
+      "здание",
+      "посёлок",
+      "художников",
+      "сокол",
+      "домики",
+      "веранда",
+      "сад",
+      "рядом",
+      "3d тур"
+    ],
     "onlyOnDirectQuestion": true,
     "onlyOnDirectQuestionNote": "Описание здания и достопримечательности рядом — только если клиент спрашивает напрямую. НЕ упоминать проактивно."
+  },
+  {
+    "faqId": "faq-new-mmhq8pjn",
+    "question": "Какая у вас система налогообложения?",
+    "answer": "На Чистых прудах у нас НДС 5% (ИП).\nНа всех остальных объектах — ИП АУСН (без НДС).\n\nСтоимость аренды указана без НДС.",
+    "category": "pricing",
+    "alternativeQuestions": [
+      "Какая у вас СНО?",
+      "У вас УСН?",
+      "У вас НДС?",
+      "Какой у вас налог?",
+      "Цена с НДС или без?"
+    ],
+    "relatedQuestions": ["faq-pricing-nds"],
+    "popularity": 80,
+    "tags": ["ндс", "налог", "налогообложение", "усн", "аусн", "сно", "ип"]
   }
 ]

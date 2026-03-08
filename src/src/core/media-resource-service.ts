@@ -385,7 +385,7 @@ export class MediaResourceService {
 
     switch (scopeResult.scope) {
       case MediaScope.SPECIFIC_OFFICE:
-        return this.buildOfficeMedia(scopeResult.officeIds, scopeResult.locationIds, offices);
+        return this.buildOfficeMedia(scopeResult.officeIds, scopeResult.locationIds, offices, conversationId);
       case MediaScope.SPECIFIC_LOCATION:
         return this.buildLocationMedia(scopeResult.locationIds, offices, conversationId);
       case MediaScope.ALL_LOCATIONS:
@@ -399,9 +399,17 @@ export class MediaResourceService {
     officeIds: string[],
     locationIds: string[],
     offices: OfficeInfo[],
+    conversationId: string = '',
   ): { messages: MediaMessage[]; description: string } {
     const messages: MediaMessage[] = [];
     const descParts: string[] = [];
+
+    // Собираем locationIds из офисов (для отправки презентации локации)
+    const resolvedLocationIds = new Set(locationIds);
+    for (const officeId of officeIds) {
+      const office = offices.find(o => o.id === officeId);
+      if (office) resolvedLocationIds.add(office.locationId);
+    }
 
     for (const officeId of officeIds) {
       const officeMedia = this.config.offices[officeId];
@@ -424,9 +432,24 @@ export class MediaResourceService {
       }
     }
 
+    // Отправить презентацию локации (если есть и ещё не отправлялась)
+    if (conversationId) {
+      for (const locId of resolvedLocationIds) {
+        const obj = this.config.objects[locId];
+        if (obj?.presentation && !this.isPresentationSent(conversationId, locId)) {
+          messages.push({
+            attachment: { type: 'file', filePath: obj.presentation, caption: `Презентация ${obj.name}` },
+            delayMs: 1000,
+          });
+          this.markPresentationSent(conversationId, locId);
+          descParts.push(`презентация ${obj.name}`);
+        }
+      }
+    }
+
     // Если для офиса нет своего медиа — отправить медиа локации
     if (messages.length === 0 && locationIds.length > 0) {
-      return this.buildLocationMedia(locationIds, offices, '');
+      return this.buildLocationMedia(locationIds, offices, conversationId);
     }
 
     return { messages, description: descParts.join('; ') };

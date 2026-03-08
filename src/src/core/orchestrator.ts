@@ -1038,6 +1038,12 @@ export class Orchestrator {
       // 15.5. Fallback: если AI забыл маркер [HANDOFF], но текст содержит
       // обещания уточнить/переключить/узнать — принудительно вызываем handoff
       // Если есть медиа — сначала отправляем текст + медиа, потом переключаем в HUMAN
+      // НО: если AI уверенно ответил (confidence >= 0.8 и handoff=false), пропускаем —
+      // случайная фраза вроде "уточню информацию" при высокой уверенности не должна триггерить handoff
+      if (aiResponse.confidence >= 0.8 && !aiResponse.requiresHandoff) {
+        this.logger.info(`[Step 15.5] Skipping handoff pattern check — AI confidence=${aiResponse.confidence}, handoff=false`);
+      }
+      const skipPatternCheck = aiResponse.confidence >= 0.8 && !aiResponse.requiresHandoff;
       const responseTextLower = aiResponse.text.toLowerCase();
       const handoffPatterns = [
         /переключу\s+(на\s+)?(менеджер|коллег)/,
@@ -1054,7 +1060,7 @@ export class Orchestrator {
         /минуточку.{0,20}(уточню|узнаю|спрошу|разберусь)/,
         /секундочку.{0,20}(уточню|узнаю|спрошу|разберусь)/,
       ];
-      const detectedHandoffPhrase = handoffPatterns.find(pattern => pattern.test(responseTextLower));
+      const detectedHandoffPhrase = skipPatternCheck ? undefined : handoffPatterns.find(pattern => pattern.test(responseTextLower));
       if (detectedHandoffPhrase) {
         this.logger.info(`[Step 15.5] AI text matches handoff pattern: ${detectedHandoffPhrase} — triggering handoff`);
 

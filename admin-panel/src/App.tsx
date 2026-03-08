@@ -5,6 +5,7 @@ import ConfigPage from './pages/ConfigPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
 import DialogUploadPage from './pages/DialogUploadPage';
 import OfficesPage from './pages/OfficesPage';
+import LocationsPage from './pages/LocationsPage';
 import MediaPage from './pages/MediaPage';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/knowledge" element={<KnowledgeBasePage />} />
         <Route path="/dialogs" element={<DialogUploadPage />} />
         <Route path="/offices" element={<OfficesPage />} />
+        <Route path="/locations" element={<LocationsPage />} />
         <Route path="/media" element={<MediaPage />} />
       </Routes>
     </Layout>

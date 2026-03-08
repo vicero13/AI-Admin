@@ -17,6 +17,7 @@ interface Office {
   link?: string;
   availableFrom: string;
   status: 'free' | 'rented' | 'maintenance';
+  active: boolean;
   notes?: string;
   lastUpdated: number;
 }
@@ -30,6 +31,7 @@ const emptyOffice = (): Partial<Office> => ({
   link: '',
   availableFrom: 'available',
   status: 'free',
+  active: true,
   notes: '',
 });
 
@@ -41,7 +43,7 @@ export default function OfficesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Office>>({});
   const [newOffice, setNewOffice] = useState<Partial<Office> | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -85,13 +87,12 @@ export default function OfficesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleToggleActive = async (id: string) => {
     setSaving(id);
     try {
-      await api.delete(`/admin/offices/${id}`);
-      setOffices(offices.filter(o => o.id !== id));
-      setDeleteConfirm(null);
-      toast('success', 'Офис удалён');
+      const res = await api.patch(`/admin/offices/${id}/toggle-active`);
+      setOffices(offices.map(o => o.id === id ? res.data : o));
+      toast('success', res.data.active ? 'Офис активирован' : 'Офис перемещён в архив');
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -134,16 +135,27 @@ export default function OfficesPage() {
     <div className="max-w-6xl">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Офисы</h2>
-        <button
-          onClick={() => setNewOffice(emptyOffice())}
-          disabled={!!newOffice}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Добавить офис
-        </button>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={e => setShowArchived(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Показать архив
+          </label>
+          <button
+            onClick={() => setNewOffice(emptyOffice())}
+            disabled={!!newOffice}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Добавить офис
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -157,6 +169,7 @@ export default function OfficesPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Цена/мес</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ссылка</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Свободен</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Активен</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
             </tr>
           </thead>
@@ -172,10 +185,8 @@ export default function OfficesPage() {
                 onChange={(field, value) => setNewOffice({ ...newOffice, [field]: value })}
                 onSave={() => handleSave(newOffice, true)}
                 onCancel={() => setNewOffice(null)}
-                onDelete={() => {}}
+                onToggleActive={() => {}}
                 onEdit={() => {}}
-                deleteConfirm={false}
-                onDeleteConfirm={() => {}}
                 getLocationName={getLocationName}
                 formatPrice={formatPrice}
                 formatDate={formatDate}
@@ -183,7 +194,9 @@ export default function OfficesPage() {
             )}
 
             {/* Существующие офисы */}
-            {offices.map(office => (
+            {offices
+              .filter(o => showArchived || o.active !== false)
+              .map(office => (
               <OfficeRow
                 key={office.id}
                 office={editingId === office.id ? editData : office}
@@ -194,10 +207,8 @@ export default function OfficesPage() {
                 onChange={(field, value) => setEditData({ ...editData, [field]: value })}
                 onSave={() => handleSave(editData, false)}
                 onCancel={cancelEdit}
-                onDelete={() => handleDelete(office.id)}
+                onToggleActive={() => handleToggleActive(office.id)}
                 onEdit={() => startEdit(office)}
-                deleteConfirm={deleteConfirm === office.id}
-                onDeleteConfirm={() => setDeleteConfirm(deleteConfirm === office.id ? null : office.id)}
                 getLocationName={getLocationName}
                 formatPrice={formatPrice}
                 formatDate={formatDate}
@@ -206,7 +217,7 @@ export default function OfficesPage() {
 
             {offices.length === 0 && !newOffice && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                   Нет офисов. Нажмите "Добавить офис" чтобы создать первый.
                 </td>
               </tr>
@@ -227,10 +238,8 @@ interface OfficeRowProps {
   onChange: (field: keyof Office, value: any) => void;
   onSave: () => void;
   onCancel: () => void;
-  onDelete: () => void;
+  onToggleActive: () => void;
   onEdit: () => void;
-  deleteConfirm: boolean;
-  onDeleteConfirm: () => void;
   getLocationName: (id: string) => string;
   formatPrice: (price: number) => string;
   formatDate: (date: string) => string;
@@ -245,10 +254,8 @@ function OfficeRow({
   onChange,
   onSave,
   onCancel,
-  onDelete,
+  onToggleActive,
   onEdit,
-  deleteConfirm,
-  onDeleteConfirm,
   getLocationName,
   formatPrice,
   formatDate,
@@ -317,6 +324,9 @@ function OfficeRow({
             className="w-32 px-2 py-1 border rounded text-sm"
           />
         </td>
+        <td className="px-4 py-2 text-center">
+          <span className="text-xs text-gray-400">—</span>
+        </td>
         <td className="px-4 py-2 text-right space-x-1">
           <button
             onClick={onSave}
@@ -337,8 +347,10 @@ function OfficeRow({
     );
   }
 
+  const isActive = office.active !== false;
+
   return (
-    <tr className="hover:bg-gray-50">
+    <tr className={isActive ? 'hover:bg-gray-50' : 'bg-gray-100 opacity-60'}>
       <td className="px-4 py-3 text-sm">{getLocationName(office.locationId || '')}</td>
       <td className="px-4 py-3 text-sm font-medium">{office.number || '—'}</td>
       <td className="px-4 py-3 text-sm">{office.capacity}</td>
@@ -356,40 +368,29 @@ function OfficeRow({
           {formatDate(office.availableFrom || 'available')}
         </span>
       </td>
-      <td className="px-4 py-3 text-right space-x-1">
-        {deleteConfirm ? (
-          <>
-            <span className="text-sm text-red-600 mr-2">Удалить?</span>
-            <button
-              onClick={onDelete}
-              disabled={saving}
-              className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
-            >
-              Да
-            </button>
-            <button
-              onClick={onDeleteConfirm}
-              className="px-3 py-1 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
-            >
-              Нет
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={onEdit}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-            >
-              ✎
-            </button>
-            <button
-              onClick={onDeleteConfirm}
-              className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600"
-            >
-              ✕
-            </button>
-          </>
-        )}
+      <td className="px-4 py-3 text-center">
+        <button
+          onClick={onToggleActive}
+          disabled={saving}
+          title={isActive ? 'В архив' : 'Активировать'}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+            isActive ? 'bg-green-500' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              isActive ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </td>
+      <td className="px-4 py-3 text-right">
+        <button
+          onClick={onEdit}
+          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+        >
+          ✎
+        </button>
       </td>
     </tr>
   );
