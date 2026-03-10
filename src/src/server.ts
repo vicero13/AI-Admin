@@ -177,8 +177,8 @@ async function main() {
     postgres: dbType === 'postgres' ? {
       host: process.env.POSTGRES_HOST || config.database?.postgres?.host || 'localhost',
       port: Number(process.env.POSTGRES_PORT) || config.database?.postgres?.port || 5432,
-      database: process.env.POSTGRES_DB || config.database?.postgres?.database || 'REMOVED',
-      user: process.env.POSTGRES_USER || config.database?.postgres?.user || 'REMOVED',
+      database: process.env.POSTGRES_DB || config.database?.postgres?.database || 'ai_admin',
+      user: process.env.POSTGRES_USER || config.database?.postgres?.user || 'ai_admin',
       password: process.env.POSTGRES_PASSWORD || config.database?.postgres?.password || '',
       maxConnections: config.database?.postgres?.maxConnections || 10,
     } : undefined,

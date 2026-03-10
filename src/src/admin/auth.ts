@@ -16,7 +16,7 @@ export interface AdminConfig {
   tokenExpiry: string;
 }
 
-const INSECURE_SECRETS = ['REMOVED', 'changeme', 'secret', 'REMOVED'];
+const INSECURE_SECRETS = ['change-me-in-production', 'changeme', 'secret'];
 
 function getAdminConfig(configPath: string): AdminConfig {
   const fs = require('fs');

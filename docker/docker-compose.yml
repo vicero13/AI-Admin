@@ -23,7 +23,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ai_admin
       POSTGRES_USER: ai_admin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-REMOVED}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ../knowledge-base:/app/knowledge-base:ro
     depends_on:
@@ -57,7 +57,7 @@ services:
     environment:
       POSTGRES_DB: ai_admin
       POSTGRES_USER: ai_admin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-REMOVED}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:

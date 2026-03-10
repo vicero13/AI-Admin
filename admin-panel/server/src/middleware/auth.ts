@@ -2,7 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
 function getSecret(): string {
-  return process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || 'REMOVED';
+  const secret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT secret not configured (ADMIN_JWT_SECRET or JWT_SECRET)');
+  return secret;
 }
 
 function getPassword(): string {
