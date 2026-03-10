@@ -721,13 +721,36 @@ async function main() {
     });
     app.use('/', adminRouter);
 
-    // Proxy API routes to admin-panel server (port 4000)
-    // Frontend calls /api/auth/*, /api/config, /api/knowledge/*, /api/dialogs/*, /api/status/*
+    // Hot-reload медиа конфига (вызывается из admin-panel после сохранения)
+    // MUST be before the proxy catch-all
+    app.post('/api/admin/reload-media', (_req, res) => {
+      try {
+        if (!fs.existsSync(mediaJsonPath)) {
+          return res.status(404).json({ error: 'media.json not found' });
+        }
+        const raw = fs.readFileSync(mediaJsonPath, 'utf-8');
+        const newConfig = JSON.parse(raw) as MediaResourceConfig;
+
+        if (mediaResourceService) {
+          mediaResourceService.updateConfig(newConfig);
+        } else if (newConfig.enabled) {
+          mediaResourceService = new MediaResourceService(newConfig);
+          (orchestrator as any).mediaResourceService = mediaResourceService;
+        }
+        console.log('[Hot-reload] ✅ Media config reloaded');
+        res.json({ success: true });
+      } catch (err: any) {
+        console.error('[Hot-reload] ❌ Failed to reload media:', err.message);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // Proxy ALL unhandled /api/* requests to admin-panel server (port 4000)
+    // Main server routes (/api/admin/login, /api/admin/offices, etc.) are handled above by adminRouter.
+    // Everything else (e.g. /api/config, /api/knowledge/*, /api/auth/*, /api/admin/media, /api/status/*) is proxied.
     const adminPanelPort = parseInt(process.env.ADMIN_PORT || '4000', 10);
-    const proxyPrefixes = ['/api/auth/', '/api/config', '/api/knowledge', '/api/dialogs', '/api/status/'];
     app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      const shouldProxy = proxyPrefixes.some((p) => req.originalUrl === p || req.originalUrl.startsWith(p));
-      if (!shouldProxy) return next();
+      if (!req.originalUrl.startsWith('/api/')) return next();
 
       const isJsonBody = (req.headers['content-type'] || '').includes('application/json');
       const bodyStr = isJsonBody && req.body ? JSON.stringify(req.body) : undefined;
@@ -762,29 +785,6 @@ async function main() {
 
     console.log('[Init] ✅ Admin panel enabled');
   }
-
-  // Hot-reload медиа конфига (вызывается из admin-panel после сохранения)
-  app.post('/api/admin/reload-media', (_req, res) => {
-    try {
-      if (!fs.existsSync(mediaJsonPath)) {
-        return res.status(404).json({ error: 'media.json not found' });
-      }
-      const raw = fs.readFileSync(mediaJsonPath, 'utf-8');
-      const newConfig = JSON.parse(raw) as MediaResourceConfig;
-
-      if (mediaResourceService) {
-        mediaResourceService.updateConfig(newConfig);
-      } else if (newConfig.enabled) {
-        mediaResourceService = new MediaResourceService(newConfig);
-        (orchestrator as any).mediaResourceService = mediaResourceService;
-      }
-      console.log('[Hot-reload] ✅ Media config reloaded');
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error('[Hot-reload] ❌ Failed to reload media:', err.message);
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   app.listen(port, () => {
     console.log('================================================');
