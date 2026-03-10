@@ -1,2 +1,471 @@
+server:
+  port: 3000
+  host: 0.0.0.0
+ai:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  temperature: 0.4
+  maxTokens: 4096
+  cacheEnabled: true
+  cacheTTL: 1800
+personality:
+  name: Валерия
+  role: администратор коворкинга ElasticSpace
+  style: friendly
+  traits:
+    emojiUsage: moderate
+    emojiFrequency: 0.3
+    preferredEmojis:
+      - "\U0001F64F"
+      - "\U0001F60A"
+      - "\U0001F642"
+      - "\U0001F49A"
+      - "\U0001F917"
+      - "\U0001F338"
+      - "\U0001F431"
+      - "\U0001F604"
+      - "\U0001F643"
+    punctuation: casual
+    vocabulary: moderate
+    empathy: high
+    enthusiasm: moderate
+    usesHumor: false
+    formalityLevel: formal
+  patterns:
+    greetings:
+      - "Здравствуйте!"
+      - "Добрый день!"
+    farewells:
+      - "До встречи!"
+      - "Удачного дня!"
+      - "Будем рады видеть!"
+    acknowledgments:
+      - "Да, конечно"
+      - "Хорошо"
+      - "Поняла"
+      - "Отлично"
+      - "Записала"
+    delays:
+      - "Минуточку"
+      - "Сейчас посмотрю"
+      - "Уточню информацию"
+    apologies:
+      - "Извините за ожидание!"
+    transitions:
+      - "А ещё"
+    fillers:
+      - "вот"
+    preferredPhrases:
+      - "С удовольствием помогу!"
+      - "Конечно, без проблем!"
+  restrictions:
+    avoidWords:
+      - "я AI"
+      - "я бот"
+      - "я искусственный интеллект"
+      - "я не человек"
+      - "я программа"
+      - "я языковая модель"
+      - "мне не доступны эмоции"
+      - "я не имею личного опыта"
+      - "ты"
+      - "твой"
+      - "твоего"
+      - "нейросеть"
+      # Запрет на раскрытие внутренней классификации контактов
+      - "вы брокер"
+      - "вы агент"
+      - "понятно, вы брокер"
+      - "понятно, вы агент"
+      - "вы поставщик"
+      - "вы резидент"
+      - "я вижу что вы брокер"
+      - "я определил что вы"
+      - "раз вы брокер"
+      - "как брокеру"
+      - "вам как брокеру"
+      - "вам как агенту"
+    avoidTopics:
+      - "политика"
+      - "религия"
+    maxMessageLength: 400
+    avoidStyles:
+      - academic
+      - legal
+situationDetection:
+  aiProbing:
+    minConfidence: 0.6
+    handoffThreshold: 0.8
+  complexity:
+    maxScore: 70
+    handoffThreshold: 75
+  emotional:
+    escalationThreshold: 0.7
+    handoffStates:
+      - angry
+  confidence:
+    minScore: 40
+    handoffThreshold: 30
+handoff:
+  autoHandoffTriggers:
+    - ai_probing
+    - emotional_escalation
+    - low_confidence
+    - viewing_request
+    - client_nearby
+    - purchase_sale
+    - sublease_long_term
+    - office_customization
+  notificationChannels:
+    - telegram
+  stallingMessages:
+    - "Минуточку, уточню информацию"
+    - "Секундочку, проверю"
+    - "Сейчас узнаю и отвечу"
+  customStallingMessages:
+    ai_probing:
+      - "Минуточку, уточню информацию"
+    complex_query:
+      - "Интересный вопрос! Дай минутку, проверю варианты"
+    emotional_escalation:
+      - "Понимаю, сейчас разберусь в ситуации"
+    low_confidence:
+      - "Секундочку, уточню детали"
+    viewing_request:
+      - "Сейчас уточню у менеджера по свободным датам и времени. Вам когда было бы удобно?"
+    sublease_long_term:
+      - "Этот вопрос можно обсудить с менеджером на просмотре."
+    office_customization:
+      - "Косметические улучшения (перекраска стен, замена дверей) у нас недоступны, но более подробно можно уточнить у менеджера на просмотре."
+  estimatedWaitTime: 120
+  maxWaitBeforeEscalation: 300
+telegram:
+  webhook:
+    path: /webhook/telegram
+knowledgeBasePath: ../knowledge-base
+redis:
+  enabled: false
+  host: localhost
+  port: 6379
+  db: 0
+  keyPrefix: "ai-admin:"
+database:
+  type: memory
+  postgres:
+    host: localhost
+    port: 5432
+    database: ai_admin
+    user: ai_admin
+    # password loaded from POSTGRES_PASSWORD env var
+    password: ""
+    maxConnections: 10
+logging:
+  level: info
 admin:
   enabled: true
+  # password loaded from ADMIN_PASSWORD env var
+  # jwtSecret loaded from ADMIN_JWT_SECRET env var
+  tokenExpiry: 24h
+
+# === Бизнес-логика v2.0 ===
+
+workingHours:
+  enabled: true
+  timezone: "Europe/Moscow"
+  start: "09:00"
+  end: "22:00"
+  oncePerSession: true
+  sessionTimeout: 3600
+  offHoursMessage: "Доброго времени суток!\nКоманда ElasticSpace отдыхает!\nСвяжемся с Вами в рабочее время с 9:00 до 22:00"
+  schedule:
+    monday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    tuesday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    wednesday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    thursday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    friday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    saturday:
+      start: "09:00"
+      end: "22:00"
+      enabled: true
+    sunday:
+      start: "09:00"
+      end: "00:00"
+      enabled: true
+
+conversation:
+  enabled: true
+  newConversationGapDays: 180
+  newDayGapHours: 12
+  chatClearedDetection: true
+
+responseDelays:
+  enabled: true
+  typingShowMin: 5000
+  typingShowMax: 10000
+  typingMin: 1000
+  typingMax: 20000
+  greetingTypingMin: 3000
+  greetingTypingMax: 5000
+  typingRefreshInterval: 5000
+
+greetings:
+  enabled: true
+  useAI: false
+  template: "Добрый день, {name}!\nЭто Валерия, администратор коворкинга ElasticSpace, приятно познакомиться {{emoji}}"
+  templateNoName: "Добрый день!\nЭто Валерия, администратор коворкинга ElasticSpace, приятно познакомиться {{emoji}}"
+  shortTemplate: "Добрый день, {name}!"
+  shortTemplateNoName: "Добрый день!"
+  agentName: Валерия
+  emojis:
+    - "\U0001F431"
+    - "\U0001F60A"
+    - "\U0001F338"
+    - "\U0001F49A"
+    - "\U0001F917"
+
+contactQualification:
+  enabled: true
+  classifyAfterMessages: 1
+  spamKeywords: []
+  brokerKeywords:
+    - "для клиента"
+    - "для нашего клиента"
+    - "брокер"
+    - "агент"
+    - "агентство недвижимости"
+    - "риэлтор"
+    - "подбираем офис"
+    - "ищем для компании"
+  residentKeywords:
+    - "я у вас арендую"
+    - "мой офис"
+    - "наш офис"
+    - "мы ваши резиденты"
+    - "мы арендуем"
+    - "наш договор"
+    - "продление договора"
+    - "счёт на оплату"
+    - "оплата аренды"
+    - "пароль от wifi"
+    - "пароль от вайфая"
+    - "какой пароль от"
+    - "код от переговорной"
+    - "код от кабинета"
+    - "подключиться к вай-фай"
+    - "интернет не работает"
+    - "интернет пропал"
+    - "интернет подлагивает"
+    - "проверить интернет"
+    - "роутер"
+    - "резервный интернет"
+    - "сломан стул"
+    - "сломан столик"
+    - "не работает принтер"
+    - "не работает кнопка"
+    - "перестали работать выключатели"
+    - "выключается свет"
+    - "течет потолок"
+    - "пахнет канализацией"
+    - "пожарная сигнализация"
+    - "неисправности по офису"
+    - "не работает на кухне"
+    - "починить"
+    - "заменить стул"
+    - "стремянку взять"
+    - "доступ по отпечатку"
+    - "открыть переговорную"
+    - "открыть кабинет"
+    - "помочь донести"
+    - "есть принтер"
+    - "распечатать"
+    - "сканер"
+    - "ключ доступа"
+    - "обновить ключ"
+    - "пропуск не работает"
+    - "есть шестигранник"
+    - "есть конверты"
+    - "есть коробки"
+    - "есть пледик"
+    - "одноразовая посуда"
+    - "есть штопор"
+    - "есть колонка"
+    - "ваза для цветов"
+    - "есть удлинитель"
+    - "переходник"
+    - "зарядка"
+    - "маркерная доска"
+    - "флипчарт"
+    - "уборка в офисе"
+    - "проблема с уборкой"
+    - "курьер забрать"
+    - "курьер оставить"
+    - "забрать мусор"
+    - "настроить палец"
+    - "добавить отпечаток"
+    - "карточка доступа"
+    - "табличку на дверь"
+    - "подключить ноутбук"
+    - "подключить телевизор"
+    - "душно в офисе"
+    - "холодно в офисе"
+    - "жарко в офисе"
+    - "батареи подкрутить"
+    - "кофе закончился"
+    - "вода закончилась"
+    - "пурифайер"
+    - "лампочку заменить"
+    - "шторы"
+    - "жалюзи"
+    - "можете зайти к нам"
+    - "пальчики сделать"
+    - "счет в эдо"
+    - "есть эдо"
+    - "акт сверки"
+    - "закрывающие документы"
+    - "расторжение договора"
+    - "уведомление о расторжении"
+    - "подписать договор"
+    - "акты подписываются"
+    - "счет за месяц"
+    - "реквизиты"
+    - "авторизация в приложении"
+    - "приложение коворкинга"
+    - "ссылка-приглашение не работает"
+    - "подвязать телеграмм к приложению"
+    - "добавить сотрудника в приложение"
+    - "забронировать через приложение"
+    - "личный кабинет"
+    - "зарегистрироваться в приложении"
+  supplierKeywords:
+    - "предлагаем услуги"
+    - "коммерческое предложение"
+    - "сотрудничество"
+    - "поставка"
+    - "тендер"
+    - "клининг"
+    - "ремонт"
+    - "доставка"
+    - "курьер"
+    - "поставщик"
+    - "прайс-лист"
+    - "каталог"
+    - "оборудование"
+    - "мебель"
+    - "канцелярия"
+    - "вода"
+    - "стаканчики"
+    - "кофе оптом"
+    - "расходные материалы"
+    - "обслуживание"
+    - "предлагаю"
+    - "хотим предложить"
+  residentFolders:
+    - "Резиденты"
+    - "Арендаторы"
+  officeNumberInName: true
+  neverRevealClassification: true
+  clarificationQuestion: "Вы для себя офис подбираете или для клиента?"
+  clarificationNote: "Использовать этот вопрос, если из контекста разговора непонятно — прямой это клиент или брокер. НИКОГДА не спрашивать напрямую 'вы брокер?' или 'вы агент?'"
+
+currentOffersDetection:
+  enabled: true
+  keywords:
+    - "что актуально"
+    - "что есть на сегодня"
+    - "какие офисы свободны"
+    - "что можете предложить"
+    - "какие варианты"
+    - "свободные офисы"
+    - "что доступно"
+    - "есть свободные"
+    - "все варианты"
+    - "все предложения"
+    - "уточните что актуально"
+  behavior: "SHOW_ALL_AVAILABLE_OFFICES"
+  note: "При срабатывании — AI выдаёт ПОЛНЫЙ список свободных офисов (status=free) из базы: номер, локация, вместимость, цена, доступность. Не задавать уточняющих вопросов — сразу показать все."
+
+strangeQuestions:
+  enabled: true
+  maxBeforeHandoff: 2
+  firstResponseTemplate: "Что?"
+  responseTemplate: "Могу ли чем-то помочь, что касается наших офисов?)"
+  deferToViewingTemplate: "Такие детали лучше обсудить на просмотре — так Вы сможете всё увидеть своими глазами ) Хотите записаться?"
+  delayBetweenMessages: 5000
+  allowedTopics:
+    - "недвижимость"
+    - "аренда"
+    - "покупка"
+    - "офисы"
+    - "коворкинг"
+    - "просмотры"
+    - "переговорные"
+
+operatorRequest:
+  enabled: true
+  operatorPatterns:
+    - "позови оператора"
+    - "переключи на оператора"
+    - "хочу говорить с человеком"
+    - "соедини с менеджером"
+    - "позовите менеджера"
+    - "живой оператор"
+    - "переключите на человека"
+  botQuestionPatterns:
+    - "ты бот"
+    - "ты робот"
+    - "ты нейросеть"
+    - "ты искусственный интеллект"
+    - "ты живой"
+    - "ты человек"
+    - "ты настоящий"
+    - "ты реальный"
+  replyToGreeting: "Я представлялась выше уже.."
+  offerManager: "Могу попросить ответить одного из наших старших менеджеров, если надо"
+  transferMessage: "Минуту, сейчас попрошу старшего менеджера Кристину или Роберта ответить"
+  notBotResponse: "Нет, я менеджер ElasticSpace ) Чем могу помочь?"
+  delayBeforeOffer: 10000
+  delayBeforeTransfer: 15000
+
+followUp:
+  enabled: true
+  delayMinutes: 60
+  maxPerConversation: 3
+  cooldownMinutes: 30
+  contextMessages:
+    viewing_time: "Получилось согласовать время для просмотра?"
+    presentation_sent: "Успели посмотреть презентацию? Если есть вопросы — с удовольствием отвечу!"
+    thinking: "Добрый день! Удалось принять решение по офису?"
+    minimal: "?"
+    media_sent_to_broker: "Подскажите, когда могу пригласить Вас с клиентом на показ?\nВживую наши пространства выглядят еще лучше"
+  brokerFollowUp:
+    enabled: true
+    trigger: media_sent_to_broker
+    delaySeconds: 3600
+    condition: no_response_from_client
+    message: "Подскажите, когда могу пригласить Вас с клиентом на показ?\nВживую наши пространства выглядят еще лучше"
+
+summary:
+  enabled: true
+  notifyOnViewing: true
+  notificationChannel: telegram
+
+mediaResources:
+  enabled: false
+  basePath: "./media"
+  objects: {}
+  offices: {}

@@ -40,15 +40,15 @@ export default function ConfigPage() {
       {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
 
       <div className="space-y-3">
-        <ServerSection data={config.server} onChange={updateField} />
-        <AISection data={config.ai} onChange={updateField} />
-        <PersonalitySection data={config.personality} onChange={updateField} />
-        <SituationDetectionSection data={config.situationDetection} onChange={updateField} />
-        <HandoffSection data={config.handoff} onChange={updateField} />
-        <TelegramSection data={config.telegram} onChange={updateField} />
-        <RedisSection data={config.redis} onChange={updateField} />
-        <DatabaseSection data={config.database} onChange={updateField} />
-        <LoggingSection data={config.logging} onChange={updateField} />
+        {config.server && <ServerSection data={config.server} onChange={updateField} />}
+        {config.ai && <AISection data={config.ai} onChange={updateField} />}
+        {config.personality && <PersonalitySection data={config.personality} onChange={updateField} />}
+        {config.situationDetection && <SituationDetectionSection data={config.situationDetection} onChange={updateField} />}
+        {config.handoff && <HandoffSection data={config.handoff} onChange={updateField} />}
+        {config.telegram && <TelegramSection data={config.telegram} onChange={updateField} />}
+        {config.redis && <RedisSection data={config.redis} onChange={updateField} />}
+        {config.database && <DatabaseSection data={config.database} onChange={updateField} />}
+        {config.logging && <LoggingSection data={config.logging} onChange={updateField} />}
       </div>
 
       <div className="mt-6 flex justify-end">
