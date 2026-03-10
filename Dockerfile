@@ -52,6 +52,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 COPY --from=builder /app/src/dist ./src/dist
+COPY --from=builder /app/src/config ./src/config
 COPY --from=builder /app/src/src/admin/ui/dist ./src/src/admin/ui/dist
 COPY --from=builder /app/src/package*.json ./src/
 COPY --from=builder /app/src/node_modules ./src/node_modules

@@ -49,12 +49,24 @@ import {
 dotenv.config();
 
 async function loadConfig(): Promise<any> {
-  const configPath = path.resolve(__dirname, '../config/default.yaml');
-  if (fs.existsSync(configPath)) {
-    const raw = fs.readFileSync(configPath, 'utf-8');
-    return YAML.parse(raw);
+  // Пробуем несколько путей: dist/config, src/config, config рядом с проектом
+  const candidates = [
+    path.resolve(__dirname, '../config/default.yaml'),       // dist/src/../config = dist/config
+    path.resolve(__dirname, '../../config/default.yaml'),     // dist/src/../../config = config (рядом с dist)
+    path.resolve(__dirname, '../../src/config/default.yaml'), // при запуске из dist → src/config
+    path.resolve(process.cwd(), 'src/config/default.yaml'),  // относительно рабочей директории
+    path.resolve(process.cwd(), 'config/default.yaml'),      // config в корне
+  ];
+  for (const configPath of candidates) {
+    if (fs.existsSync(configPath)) {
+      console.log(`[Config] Загружен: ${configPath}`);
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      return YAML.parse(raw);
+    }
   }
-  console.warn('[Config] Файл конфигурации не найден, используются значения по умолчанию');
+  console.warn('[Config] Файл конфигурации не найден ни по одному из путей:');
+  candidates.forEach(p => console.warn(`  - ${p}`));
+  console.warn('[Config] Используются значения по умолчанию');
   return {};
 }
 
@@ -148,9 +160,9 @@ async function main() {
   // 5. AI Engine config
   const aiEngineConfig: AIEngineConfig = {
     provider: AIProvider.ANTHROPIC,
-    model: config.ai?.model || 'claude-3-sonnet-20240229',
-    temperature: config.ai?.temperature || 0.7,
-    maxTokens: config.ai?.maxTokens || 500,
+    model: config.ai?.model || 'claude-sonnet-4-20250514',
+    temperature: config.ai?.temperature ?? 0.4,
+    maxTokens: config.ai?.maxTokens || 4096,
     systemPrompt: '',
     cacheEnabled: config.ai?.cacheEnabled || true,
     cacheTTL: config.ai?.cacheTTL || 1800,
@@ -503,11 +515,13 @@ async function main() {
 
           // Отправить основной ответ (последний рубеж: убираем [HANDOFF] если остался)
           const finalText = result.responseText.replace(/\[HANDOFF\]\s*/gi, '').trim();
-          await telegramAdapter.sendMessage(
-            message.conversationId,
-            finalText,
-            businessConnectionId,
-          );
+          if (finalText) {
+            await telegramAdapter.sendMessage(
+              message.conversationId,
+              finalText,
+              businessConnectionId,
+            );
+          }
 
           // Helper: отправить один attachment (фото/видео/документ)
           const sendAttachment = async (att: typeof result.attachment) => {

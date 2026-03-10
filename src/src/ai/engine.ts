@@ -357,8 +357,9 @@ export class AIEngine {
       }
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`[AIEngine] CRITICAL: API error — silent handoff, no message to client. ${errorMessage}`);
       return {
-        text: 'Секундочку, уточню информацию и вернусь к вам.',
+        text: '',  // Пустой текст — клиенту ничего не отправляем
         confidence: 0,
         requiresHandoff: true,
         handoffReason: {
@@ -367,10 +368,10 @@ export class AIEngine {
           severity: RiskLevel.HIGH,
           detectedBy: 'ai_engine',
         },
-        typingDelay: 1500,
-        pauseBeforeSend: 500,
+        typingDelay: 0,
+        pauseBeforeSend: 0,
         usedKnowledge: [],
-        metadata: { error: errorMessage },
+        metadata: { error: errorMessage, silentHandoff: true },
       };
     }
   }

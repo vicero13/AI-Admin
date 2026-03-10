@@ -1032,6 +1032,17 @@ export class Orchestrator {
           };
         }
 
+        // При ошибке API (TECHNICAL_ISSUE) — молчаливый хэндофф, без сообщения клиенту
+        if (aiResponse.handoffReason.type === HandoffReasonType.TECHNICAL_ISSUE) {
+          this.logger.warn(`[Step 15] Silent handoff due to technical issue — no message to client`);
+          await this.handoffSystem.initiateHandoff(conversationId, aiResponse.handoffReason, updatedContext);
+          await this.contextManager.updateContext(conversationId, {
+            mode: ConversationMode.HUMAN,
+            requiresHandoff: true,
+          });
+          return { responseText: '', typingDelay: 0 };
+        }
+
         return await this.handleHandoff(conversationId, analysis, updatedContext);
       }
 
