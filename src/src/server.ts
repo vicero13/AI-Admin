@@ -9,6 +9,8 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import http = require('http');
 
 import { createAdminRouter } from './admin';
 import { TelegramAdapter, TelegramWebhookConfig } from './adapters/telegram';
@@ -177,7 +179,7 @@ async function main() {
       port: Number(process.env.POSTGRES_PORT) || config.database?.postgres?.port || 5432,
       database: process.env.POSTGRES_DB || config.database?.postgres?.database || 'REMOVED',
       user: process.env.POSTGRES_USER || config.database?.postgres?.user || 'REMOVED',
-      password: REMOVED',
+      password: process.env.POSTGRES_PASSWORD || config.database?.postgres?.password || '',
       maxConnections: config.database?.postgres?.maxConnections || 10,
     } : undefined,
   };
@@ -718,6 +720,46 @@ async function main() {
       aiProvider: aiProvider,
     });
     app.use('/', adminRouter);
+
+    // Proxy API routes to admin-panel server (port 4000)
+    // Frontend calls /api/auth/*, /api/config, /api/knowledge/*, /api/dialogs/*, /api/status/*
+    const adminPanelPort = parseInt(process.env.ADMIN_PORT || '4000', 10);
+    const proxyPrefixes = ['/api/auth/', '/api/config', '/api/knowledge', '/api/dialogs', '/api/status/'];
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const shouldProxy = proxyPrefixes.some((p) => req.originalUrl === p || req.originalUrl.startsWith(p));
+      if (!shouldProxy) return next();
+
+      const isJsonBody = (req.headers['content-type'] || '').includes('application/json');
+      const bodyStr = isJsonBody && req.body ? JSON.stringify(req.body) : undefined;
+      const hdrs: Record<string, string | string[] | undefined> = {
+        ...req.headers,
+        host: `127.0.0.1:${adminPanelPort}`,
+      };
+      if (bodyStr) {
+        hdrs['content-length'] = Buffer.byteLength(bodyStr).toString();
+      }
+
+      const proxyReq = http.request(
+        { hostname: '127.0.0.1', port: adminPanelPort, path: req.originalUrl, method: req.method, headers: hdrs },
+        (proxyRes: http.IncomingMessage) => {
+          res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+          proxyRes.pipe(res, { end: true });
+        },
+      );
+      proxyReq.on('error', (err: Error) => {
+        console.error('[Proxy] Error forwarding to admin-panel server:', err.message);
+        if (!res.headersSent) res.status(502).json({ error: 'Admin panel server unavailable' });
+      });
+
+      if (bodyStr) {
+        proxyReq.end(bodyStr);
+      } else if (!isJsonBody && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        req.pipe(proxyReq, { end: true });
+      } else {
+        proxyReq.end();
+      }
+    });
+
     console.log('[Init] ✅ Admin panel enabled');
   }
 
