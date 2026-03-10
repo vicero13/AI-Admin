@@ -1,8 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load env vars from main project's .env file
+// Load env vars — try multiple paths for different deployment layouts
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../src/.env') });
+dotenv.config(); // also try CWD/.env
 
 import express from 'express';
 import cors from 'cors';
@@ -15,9 +17,11 @@ import knowledgeChatRoutes from './routes/knowledge-chat';
 import officesRoutes from './routes/offices';
 import locationsRoutes from './routes/locations';
 import mediaRoutes from './routes/media';
+import { loginHandler, authMiddleware } from './middleware/auth';
 import { PATHS } from './utils/paths';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = parseInt(process.env.ADMIN_PORT || '4000', 10);
 
 // CORS: restrict to configured origins
@@ -50,16 +54,20 @@ app.get('/ready', (_req, res) => {
   res.json({ status: 'ready' });
 });
 
-// API routes (rate-limited)
+// Login (open route — no auth required)
+app.post('/api/auth/login', apiLimiter, loginHandler);
+
+// API routes (rate-limited + auth required)
+const auth = authMiddleware;
 // NOTE: /api/knowledge/chat MUST be before /api/knowledge to avoid route conflicts
-app.use('/api/config', apiLimiter, configRoutes);
-app.use('/api/knowledge/chat', apiLimiter, knowledgeChatRoutes);
-app.use('/api/knowledge', apiLimiter, knowledgeRoutes);
-app.use('/api/dialogs', apiLimiter, dialogRoutes);
-app.use('/api/status', apiLimiter, statusRoutes);
-app.use('/api/admin/offices', apiLimiter, officesRoutes);
-app.use('/api/admin/locations', apiLimiter, locationsRoutes);
-app.use('/api/admin/media', apiLimiter, mediaRoutes);
+app.use('/api/config', apiLimiter, auth, configRoutes);
+app.use('/api/knowledge/chat', apiLimiter, auth, knowledgeChatRoutes);
+app.use('/api/knowledge', apiLimiter, auth, knowledgeRoutes);
+app.use('/api/dialogs', apiLimiter, auth, dialogRoutes);
+app.use('/api/status', apiLimiter, auth, statusRoutes);
+app.use('/api/admin/offices', apiLimiter, auth, officesRoutes);
+app.use('/api/admin/locations', apiLimiter, auth, locationsRoutes);
+app.use('/api/admin/media', apiLimiter, auth, mediaRoutes);
 
 // Serve uploaded media files
 app.use('/media', express.static(PATHS.mediaFiles));

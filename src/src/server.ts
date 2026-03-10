@@ -203,9 +203,10 @@ async function main() {
   console.log('[Init] Инициализация компонентов...');
 
   // Knowledge Base
-  const knowledgeBasePath = path.resolve(
+  // __dirname = src/dist/ → ../../ = project root
+  const knowledgeBasePath = process.env.KNOWLEDGE_BASE_PATH || path.resolve(
     __dirname,
-    '..',
+    '../..',
     config.knowledgeBasePath || './knowledge-base'
   );
   const knowledgeBase = new KnowledgeBase({
@@ -213,9 +214,15 @@ async function main() {
     confidenceThreshold: 0.3,
     autoReload: false,
   });
+  console.log(`[Init] Knowledge base path: ${knowledgeBasePath}`);
   try {
     await knowledgeBase.initialize();
-    console.log('[Init] ✅ База знаний загружена');
+    const stats = knowledgeBase.getStats();
+    if (stats.loadErrors.length > 0) {
+      console.warn(`[Init] ⚠️ База знаний загружена с ошибками:`);
+      stats.loadErrors.forEach((e: string) => console.warn(`  - ${e}`));
+    }
+    console.log(`[Init] ✅ База знаний загружена (офисов: ${stats.officesCount}, FAQ: ${stats.faqCount}, услуг: ${stats.servicesCount})`);
   } catch (err) {
     console.warn('[Init] ⚠️ Ошибка загрузки базы знаний:', err);
     console.warn('[Init] Продолжаем без базы знаний...');
@@ -272,7 +279,7 @@ async function main() {
   let resourceManager: ResourceManager | undefined;
   if (config.resources) {
     try {
-      const resourceBasePath = path.resolve(__dirname, '..', config.resources.basePath || './resources');
+      const resourceBasePath = path.resolve(__dirname, '../..', config.resources.basePath || './resources');
       const resourcesConfig: ResourcesConfig = {
         basePath: resourceBasePath,
         links: config.resources.links || {},
@@ -606,6 +613,7 @@ async function main() {
 
   // 8. HTTP сервер (healthcheck + метрики)
   const app = express();
+  app.set('trust proxy', 1);
 
   // CORS
   const allowedOrigins = process.env.CORS_ORIGINS

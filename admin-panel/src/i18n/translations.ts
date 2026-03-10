@@ -25,6 +25,7 @@ type TranslationKeys = {
   'nav.config': string;
   'nav.knowledge': string;
   'nav.dialogs': string;
+  'nav.logout': string;
   // Dashboard
   'dashboard.title': string;
   'dashboard.appStatus': string;
@@ -69,6 +70,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'Конфигурация',
     'nav.knowledge': 'База знаний',
     'nav.dialogs': 'Диалоги',
+    'nav.logout': 'Выход',
     'dashboard.title': 'Dashboard',
     'dashboard.appStatus': 'Статус приложения',
     'dashboard.online': 'Онлайн',
@@ -107,6 +109,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'Configuration',
     'nav.knowledge': 'Knowledge Base',
     'nav.dialogs': 'Dialogs',
+    'nav.logout': 'Logout',
     'dashboard.title': 'Dashboard',
     'dashboard.appStatus': 'App Status',
     'dashboard.online': 'Online',
@@ -145,6 +148,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'Konfiguration',
     'nav.knowledge': 'Wissensdatenbank',
     'nav.dialogs': 'Dialoge',
+    'nav.logout': 'Abmelden',
     'dashboard.title': 'Dashboard',
     'dashboard.appStatus': 'App-Status',
     'dashboard.online': 'Online',
@@ -183,6 +187,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'Configuración',
     'nav.knowledge': 'Base de conocimiento',
     'nav.dialogs': 'Diálogos',
+    'nav.logout': 'Cerrar sesión',
     'dashboard.title': 'Panel de control',
     'dashboard.appStatus': 'Estado de la app',
     'dashboard.online': 'En línea',
@@ -221,6 +226,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'Configuration',
     'nav.knowledge': 'Base de connaissances',
     'nav.dialogs': 'Dialogues',
+    'nav.logout': 'Déconnexion',
     'dashboard.title': 'Tableau de bord',
     'dashboard.appStatus': "Statut de l'app",
     'dashboard.online': 'En ligne',
@@ -259,6 +265,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': '配置',
     'nav.knowledge': '知识库',
     'nav.dialogs': '对话',
+    'nav.logout': '退出',
     'dashboard.title': '仪表板',
     'dashboard.appStatus': '应用状态',
     'dashboard.online': '在线',
@@ -297,6 +304,7 @@ const translations: Record<LangCode, TranslationKeys> = {
     'nav.config': 'कॉन्फ़िगरेशन',
     'nav.knowledge': 'ज्ञान आधार',
     'nav.dialogs': 'संवाद',
+    'nav.logout': 'लॉग आउट',
     'dashboard.title': 'डैशबोर्ड',
     'dashboard.appStatus': 'ऐप स्थिति',
     'dashboard.online': 'ऑनलाइन',
