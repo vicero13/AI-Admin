@@ -61,6 +61,8 @@ COPY --from=builder /app/admin-panel/server/dist ./admin-panel/server/dist
 COPY --from=builder /app/admin-panel/server/package*.json ./admin-panel/server/
 COPY --from=builder /app/admin-panel/server/node_modules ./admin-panel/server/node_modules
 
+COPY --from=builder /app/src/src/admin/ui/dist ./src/dist/admin/ui/dist
+
 # Папки для volumes (создаём заранее)
 RUN mkdir -p /app/knowledge-base /app/media /app/logs
 
