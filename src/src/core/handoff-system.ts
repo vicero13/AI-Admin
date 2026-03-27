@@ -84,6 +84,39 @@ export class HandoffSystem {
     };
   }
 
+  /**
+   * Уведомить менеджера без переключения в HUMAN mode.
+   * Используется для частичного хэндоффа (медиа отправлены, но чего-то не хватает).
+   */
+  async notifyWithoutHandoff(
+    conversationId: string,
+    reason: HandoffReason,
+    context: ConversationContext,
+  ): Promise<void> {
+    const handoffId = uuidv4();
+    const now = Date.now() as Timestamp;
+    const priority = this.determinePriority(reason);
+
+    const handoff: Handoff = {
+      handoffId,
+      conversationId,
+      userId: context.userId,
+      reason,
+      context,
+      initiatedAt: now,
+      notifiedAt: now,
+      status: HandoffStatus.NOTIFIED,
+      priority,
+      metadata: { partialHandoff: true },
+    };
+
+    this.handoffs.set(handoffId, handoff);
+    // НЕ вызываем setHumanMode — агент продолжает отвечать
+
+    const notification = this.formatNotification(handoff);
+    await this.onNotify(notification, priority);
+  }
+
   // --- Управление режимом ---
 
   setHumanMode(conversationId: string): void {

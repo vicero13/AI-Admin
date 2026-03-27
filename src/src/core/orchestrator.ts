@@ -669,6 +669,7 @@ export class Orchestrator {
       // Для media_request: определяем scope и проверяем наличие медиа → если есть, обрабатываем сами
       let mediaMessages: MediaMessage[] = [];
       let mediaDescription = '';
+      let missingMediaOffices: string[] = [];
 
       if (analysis.requiresHandoff && analysis.handoffReason) {
         if (analysis.handoffReason.type === HandoffReasonType.MEDIA_REQUEST && this.mediaResourceService?.isEnabled()) {
@@ -690,10 +691,23 @@ export class Orchestrator {
             const built = this.mediaResourceService.buildMediaMessages(scopeResult, officeInfos, conversationId);
             mediaMessages = built.messages;
             mediaDescription = built.description;
+            missingMediaOffices = built.missingMediaOffices;
           }
 
           if (mediaMessages.length > 0) {
-            this.logger.info(`[Step 10] Media request: scope=${scopeResult.scope}, ${mediaMessages.length} messages to send (${mediaDescription}) — skipping handoff`);
+            this.logger.info(`[Step 10] Media request: scope=${scopeResult.scope}, ${mediaMessages.length} messages to send (${mediaDescription})${missingMediaOffices.length > 0 ? ` — missing media for: ${missingMediaOffices.join(', ')}` : ''}`);
+            // Если есть офисы без медиа — частичный хэндофф (уведомить менеджера, но продолжить отвечать)
+            if (missingMediaOffices.length > 0) {
+              const partialHandoffReason: HandoffReason = {
+                type: HandoffReasonType.MEDIA_REQUEST,
+                description: `📸 Частичный запрос медиа: отправлены доступные материалы, но нет фото/видео для офисов: ${missingMediaOffices.join(', ')}. Нужно дослать.`,
+                severity: RiskLevel.LOW,
+                detectedBy: 'orchestrator.partialMedia',
+              };
+              // Уведомить менеджера, но НЕ переключать в HUMAN mode — агент продолжает отвечать
+              await this.handoffSystem.notifyWithoutHandoff(conversationId, partialHandoffReason, updatedContext);
+              this.logger.info(`[Step 10] Partial handoff: notified manager about missing media for ${missingMediaOffices.length} offices`);
+            }
           } else {
             // Нет медиа для этого запроса — handoff
             this.logger.info(`[Step 10] HANDOFF for "${text.substring(0, 50)}": reason=media_request, scope=${scopeResult.scope} — no media found`);
@@ -820,13 +834,21 @@ export class Orchestrator {
 
       if (mediaMessages.length > 0) {
         // Клиент просит медиа — файлы будут прикреплены отдельными сообщениями
+        const missingNote = missingMediaOffices.length > 0
+          ? `\nПо следующим офисам нет конкретных фото/видео: ${missingMediaOffices.join(', ')}. ` +
+            `Скажи клиенту, что по этим офисам уточнишь у коллег и пришлёшь дополнительно.`
+          : '';
         additionalInstructions.push(
           `К этому ответу будут автоматически прикреплены медиа-файлы: ${mediaDescription}.\n` +
           `ОТВЕТЬ на ВСЕ вопросы клиента из сообщения (парковка, стоимость, юрадрес и т.д.) — используй базу знаний.\n` +
-          `В конце или начале добавь что направляешь фото/видео.\n` +
+          `ОБЪЯСНИ клиенту, что именно ты отправляешь и по какому объекту/офису:\n` +
+          `— Если есть общие фото/видео объекта — скажи "Направляю общие фото/видео объекта [название]"\n` +
+          `— Если есть презентация — скажи "Также прикладываю презентацию по объекту [название]"\n` +
+          `— Если есть ссылки на ЦИАН конкретных офисов — скажи "В списке офисов есть ссылки на ЦИАН с дополнительными фото"\n` +
+          `— Если есть фото/видео конкретного офиса — скажи "Отправляю фото/видео офиса [номер] на [объект]"\n` +
           `НЕ вставляй ссылки на файлы — они будут отправлены отдельно.\n` +
-          `⚠️ НЕ ПИШИ [HANDOFF] и НЕ переключай на менеджера ради фото/видео — файлы УЖЕ прикреплены автоматически!\n` +
-          `Если по какому-то офису нет медиа — можешь написать что уточнишь у коллег.`
+          `⚠️ НЕ ПИШИ [HANDOFF] и НЕ переключай на менеджера ради фото/видео — файлы УЖЕ прикреплены автоматически!` +
+          missingNote
         );
       } else if (mediaContext) {
         additionalInstructions.push(
