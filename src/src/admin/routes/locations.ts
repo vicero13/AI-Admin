@@ -10,13 +10,30 @@ export interface Location {
   active: boolean;
 }
 
+const DEFAULT_LOCATIONS: Location[] = [
+  { id: 'sokol', name: 'Сокол', active: true },
+  { id: 'chistye-prudy', name: 'Чистые пруды', active: true },
+  { id: 'tsvetnoy', name: 'Цветной бульвар', active: true },
+];
+
 function getLocationsPath(basePath: string): string {
   return path.join(basePath, 'locations.json');
 }
 
 function loadLocations(basePath: string): Location[] {
   const filePath = getLocationsPath(basePath);
-  if (!fs.existsSync(filePath)) return [];
+  if (!fs.existsSync(filePath)) {
+    // Seed default locations if file missing
+    console.log('[Locations] locations.json not found, seeding defaults...');
+    try {
+      writeJsonFile(filePath, DEFAULT_LOCATIONS);
+      console.log('[Locations] ✅ Seeded default locations:', DEFAULT_LOCATIONS.map(l => l.name).join(', '));
+    } catch (e) {
+      console.error('[Locations] ❌ Failed to seed defaults:', e);
+      return DEFAULT_LOCATIONS;
+    }
+    return DEFAULT_LOCATIONS;
+  }
   return readJsonFile(filePath) as Location[];
 }
 

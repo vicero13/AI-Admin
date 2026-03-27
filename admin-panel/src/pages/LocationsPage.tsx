@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface Location {
   id: string;
@@ -17,6 +18,7 @@ export default function LocationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -39,7 +41,7 @@ export default function LocationsPage() {
       const res = await api.post('/admin/locations', { name: newName.trim() });
       setLocations([...locations, res.data]);
       setNewName('');
-      toast('success', 'Объект добавлен');
+      toast('success', t('locations.added'));
     } catch (err: any) {
       toast('error', err.response?.data?.error || err.message);
     } finally {
@@ -52,7 +54,7 @@ export default function LocationsPage() {
     try {
       const res = await api.patch(`/admin/locations/${id}/toggle-active`);
       setLocations(locations.map(l => l.id === id ? res.data : l));
-      toast('success', res.data.active ? 'Объект активирован' : 'Объект в архиве');
+      toast('success', res.data.active ? t('locations.activated') : t('locations.deactivated'));
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -78,7 +80,7 @@ export default function LocationsPage() {
       setLocations(locations.map(l => l.id === editingId ? res.data : l));
       setEditingId(null);
       setEditName('');
-      toast('success', 'Объект обновлён');
+      toast('success', t('locations.updated'));
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -87,13 +89,13 @@ export default function LocationsPage() {
   };
 
   if (loading) {
-    return <div className="text-gray-500">Загрузка...</div>;
+    return <div className="text-gray-500">{t('common.loading')}</div>;
   }
 
   return (
     <div className="max-w-3xl">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Объекты</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('locations.title')}</h2>
       </div>
 
       {/* Добавить объект */}
@@ -103,7 +105,7 @@ export default function LocationsPage() {
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="Название нового объекта..."
+          placeholder={t('locations.addPlaceholder')}
           className="flex-1 px-4 py-2 border rounded-lg text-sm"
         />
         <button
@@ -111,7 +113,7 @@ export default function LocationsPage() {
           disabled={adding || !newName.trim()}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
-          {adding ? '...' : 'Добавить'}
+          {adding ? '...' : t('common.add')}
         </button>
       </div>
 
@@ -120,10 +122,10 @@ export default function LocationsPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Название</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Активен</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.id')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.name')}</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('common.active')}</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -155,7 +157,7 @@ export default function LocationsPage() {
                     <button
                       onClick={() => handleToggleActive(loc.id)}
                       disabled={saving === loc.id}
-                      title={isActive ? 'В архив' : 'Активировать'}
+                      title={isActive ? t('locations.archive') : t('locations.activate')}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
                         isActive ? 'bg-green-500' : 'bg-gray-300'
                       }`}
@@ -200,7 +202,7 @@ export default function LocationsPage() {
             {locations.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                  Нет объектов. Добавьте первый выше.
+                  {t('locations.empty')}
                 </td>
               </tr>
             )}
@@ -209,7 +211,7 @@ export default function LocationsPage() {
       </div>
 
       <p className="mt-4 text-xs text-gray-400">
-        Медиа-файлы (фото, видео, презентации) настраиваются на странице «Медиа».
+        {t('locations.mediaHint')}
       </p>
     </div>
   );

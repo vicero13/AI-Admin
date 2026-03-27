@@ -167,6 +167,10 @@ export class OperatorRequestHandler {
     return this.config.enabled;
   }
 
+  updateConfig(config: OperatorRequestConfig): void {
+    this.config = config;
+  }
+
   // --- Private ---
 
   private getState(conversationId: string): OperatorRequestState {

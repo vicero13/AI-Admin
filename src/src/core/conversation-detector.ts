@@ -147,6 +147,10 @@ export class ConversationDetector {
     this.greetingSentFor.delete(conversationId);
   }
 
+  updateConfig(config: ConversationDetectorConfig): void {
+    this.config = config;
+  }
+
   isEnabled(): boolean {
     return this.config.enabled;
   }

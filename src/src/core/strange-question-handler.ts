@@ -223,6 +223,10 @@ export class StrangeQuestionHandler {
     return strangePatterns.some((p) => p.test(lower));
   }
 
+  updateConfig(config: StrangeQuestionConfig): void {
+    this.config = config;
+  }
+
   private async checkWithAI(
     message: string,
     context: ConversationContext

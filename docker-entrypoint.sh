@@ -1,6 +1,28 @@
 #!/bin/sh
-# Запускаем оба сервера параллельно
+# ============================================================
+# Docker Entrypoint: seed defaults + запуск обоих серверов
+# ============================================================
 
+# --- Seed knowledge-base from defaults if volume is empty ---
+KB_DIR="/app/knowledge-base"
+KB_DEFAULTS="/app/knowledge-base-defaults"
+
+if [ -d "$KB_DEFAULTS" ]; then
+  # Копируем каждый файл из defaults, если его нет в volume
+  for src_file in $(find "$KB_DEFAULTS" -type f); do
+    rel_path="${src_file#$KB_DEFAULTS/}"
+    dest_file="$KB_DIR/$rel_path"
+    if [ ! -f "$dest_file" ]; then
+      dest_dir=$(dirname "$dest_file")
+      mkdir -p "$dest_dir"
+      cp "$src_file" "$dest_file"
+      echo "[SEED] Copied default: $rel_path"
+    fi
+  done
+  echo "[SEED] Knowledge base seeding complete."
+fi
+
+# --- Запускаем оба сервера параллельно ---
 echo "[START] Запуск Admin Panel Server на порту 4000..."
 node admin-panel/server/dist/index.js &
 ADMIN_PID=$!

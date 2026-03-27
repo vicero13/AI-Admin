@@ -109,6 +109,10 @@ export class SummaryService {
     return this.config.enabled;
   }
 
+  updateConfig(config: SummaryConfig): void {
+    this.config = config;
+  }
+
   // --- Private helpers ---
 
   private isViewingConfirmationByKeywords(message: string): boolean {

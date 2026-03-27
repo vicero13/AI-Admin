@@ -135,6 +135,10 @@ export class GreetingService {
     return this.config.enabled;
   }
 
+  updateConfig(config: GreetingConfig): void {
+    this.config = config;
+  }
+
   // --- Private helpers ---
 
   private applyTemplate(template: string, name: string | null): string {

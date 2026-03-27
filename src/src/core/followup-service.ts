@@ -182,6 +182,10 @@ export class FollowUpService {
     return this.config.enabled;
   }
 
+  updateConfig(config: FollowUpConfig): void {
+    this.config = config;
+  }
+
   // --- Private ---
 
   private async executeFollowUp(conversationId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../api/client';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface LoginPageProps {
   onLogin: (token: string) => void;
@@ -27,6 +28,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +40,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       onLogin(res.data.token);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
-      setError(axiosErr.response?.data?.error || 'Connection error');
+      setError(axiosErr.response?.data?.error || t('login.connectionError'));
     } finally {
       setLoading(false);
     }
@@ -47,8 +49,8 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">AI-Admin Panel</h1>
-        <p className="text-sm text-gray-500 text-center mb-6">Enter password to continue</p>
+        <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">{t('login.title')}</h1>
+        <p className="text-sm text-gray-500 text-center mb-6">{t('login.subtitle')}</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
@@ -56,7 +58,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
+              placeholder={t('login.password')}
               autoFocus
               className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -65,7 +67,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               tabIndex={-1}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
             >
               {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
             </button>
@@ -80,7 +82,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             disabled={loading || !password}
             className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? t('login.logging') : t('login.submit')}
           </button>
         </form>
       </div>

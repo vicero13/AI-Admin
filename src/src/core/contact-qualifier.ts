@@ -271,6 +271,11 @@ export class ContactQualifier {
     return this.config.enabled;
   }
 
+  updateConfig(config: QualifierConfig): void {
+    this.config = config;
+    this.classificationCache.clear();
+  }
+
   // --- Private helpers ---
 
   private classifyByHeuristics(messages: ContextMessage[]): ContactType {

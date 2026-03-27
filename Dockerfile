@@ -66,6 +66,9 @@ COPY --from=builder /app/src/src/admin/ui/dist ./src/dist/admin/ui/dist
 # Папки для volumes (создаём заранее)
 RUN mkdir -p /app/knowledge-base /app/media /app/logs
 
+# Копируем knowledge-base как defaults (для seed при первом запуске)
+COPY knowledge-base/ /app/knowledge-base-defaults/
+
 # Expose оба порта
 EXPOSE 3000 4000
 

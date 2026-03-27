@@ -52,8 +52,7 @@ export function createSettingsRouter(deps: AdminDependencies): Router {
       configService.writeSection(cp, section, req.body);
       res.json({
         success: true,
-        requiresRestart: true,
-        message: 'Changes saved. Some changes may require server restart to take effect.',
+        message: 'Changes saved and applied.',
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -66,8 +65,7 @@ export function createSettingsRouter(deps: AdminDependencies): Router {
       configService.writeConfig(cp, req.body);
       res.json({
         success: true,
-        requiresRestart: true,
-        message: 'Full config saved. Restart required.',
+        message: 'Config saved and applied.',
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

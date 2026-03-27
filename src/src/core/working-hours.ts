@@ -156,6 +156,10 @@ export class WorkingHoursService {
     return this.config.enabled;
   }
 
+  updateConfig(config: WorkingHoursConfig): void {
+    this.config = config;
+  }
+
   // --- Private helpers ---
 
   private getDaySchedule(dayOfWeek: number): DayHours | null {

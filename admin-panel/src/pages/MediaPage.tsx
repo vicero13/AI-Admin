@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../i18n/useTranslation';
 import ObjectMediaCard from '../components/media/ObjectMediaCard';
 import OfficeMediaCard from '../components/media/OfficeMediaCard';
 import type { ObjectMedia } from '../components/media/ObjectMediaCard';
@@ -34,6 +35,7 @@ export default function MediaPage() {
   const [tab, setTab] = useState<'objects' | 'offices'>('objects');
   const [addOfficeId, setAddOfficeId] = useState('');
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -60,7 +62,7 @@ export default function MediaPage() {
     try {
       const res = await api.patch('/admin/media/enabled', { enabled: !config.enabled });
       setConfig(res.data);
-      toast('success', config.enabled ? 'Медиа выключены' : 'Медиа включены');
+      toast('success', config.enabled ? t('media.disabled') : t('media.enabled'));
     } catch (err: any) {
       toast('error', err.message);
     }
@@ -71,7 +73,7 @@ export default function MediaPage() {
     try {
       const res = await api.put(`/admin/media/objects/${locationId}`, data);
       setConfig(res.data);
-      toast('success', `${data.name} — медиа сохранены`);
+      toast('success', `${data.name} — ${t('media.saved')}`);
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -84,7 +86,7 @@ export default function MediaPage() {
     try {
       const res = await api.put(`/admin/media/offices/${officeId}`, data);
       setConfig(res.data);
-      toast('success', `${data.name} — медиа сохранены`);
+      toast('success', `${data.name} — ${t('media.saved')}`);
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -96,7 +98,7 @@ export default function MediaPage() {
     try {
       const res = await api.delete(`/admin/media/offices/${officeId}`);
       setConfig(res.data);
-      toast('success', 'Медиа офиса удалены');
+      toast('success', t('media.deleted'));
     } catch (err: any) {
       toast('error', err.message);
     }
@@ -128,13 +130,13 @@ export default function MediaPage() {
   );
 
   if (loading || !config) {
-    return <div className="text-gray-500">Загрузка...</div>;
+    return <div className="text-gray-500">{t('common.loading')}</div>;
   }
 
   return (
     <div className="max-w-4xl">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Медиа</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('media.title')}</h2>
         <button
           onClick={toggleEnabled}
           className={`px-4 py-2 rounded-lg text-sm font-medium ${
@@ -143,7 +145,7 @@ export default function MediaPage() {
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          {config.enabled ? 'Медиа включены' : 'Медиа выключены'}
+          {config.enabled ? t('media.enabled') : t('media.disabled')}
         </button>
       </div>
 
@@ -155,7 +157,7 @@ export default function MediaPage() {
             tab === 'objects' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          Объекты ({Object.keys(config.objects).length})
+          {t('media.objects')} ({Object.keys(config.objects).length})
         </button>
         <button
           onClick={() => setTab('offices')}
@@ -163,7 +165,7 @@ export default function MediaPage() {
             tab === 'offices' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          Офисы ({Object.keys(config.offices).length})
+          {t('media.officeMedia')} ({Object.keys(config.offices).length})
         </button>
       </div>
 
@@ -193,7 +195,7 @@ export default function MediaPage() {
                 onChange={(e) => setAddOfficeId(e.target.value)}
                 className="flex-1 px-3 py-2 border rounded-lg text-sm"
               >
-                <option value="">Выберите офис...</option>
+                <option value="">{t('media.selectOffice')}</option>
                 {officesWithoutMedia.map((o) => (
                   <option key={o.id} value={o.id}>
                     {getLocationName(o.locationId)} — {o.number}
@@ -205,14 +207,14 @@ export default function MediaPage() {
                 disabled={!addOfficeId}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
-                Добавить медиа
+                {t('media.addMedia')}
               </button>
             </div>
           )}
 
           {Object.keys(config.offices).length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              Нет медиа для офисов. Выберите офис выше, чтобы добавить фотографии.
+              {t('media.emptyOffices')}
             </div>
           ) : (
             Object.entries(config.offices).map(([officeId, data]) => (

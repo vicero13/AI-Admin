@@ -745,6 +745,95 @@ async function main() {
       }
     });
 
+    // Hot-reload всего конфига (вызывается из admin-panel после сохранения настроек)
+    app.post('/api/admin/reload-config', async (_req, res) => {
+      try {
+        const newConfig = await loadConfig();
+        console.log('[Hot-reload] Перезагрузка конфигурации...');
+
+        // AI Engine
+        const newAiConfig: AIEngineConfig = {
+          provider: AIProvider.ANTHROPIC,
+          model: newConfig.ai?.model || 'claude-sonnet-4-20250514',
+          temperature: newConfig.ai?.temperature ?? 0.4,
+          maxTokens: newConfig.ai?.maxTokens || 4096,
+          systemPrompt: '',
+          cacheEnabled: newConfig.ai?.cacheEnabled || true,
+          cacheTTL: newConfig.ai?.cacheTTL || 1800,
+          metadata: { apiKey: aiApiKey },
+        };
+        aiEngine.updateConfig(newAiConfig);
+
+        // Personality
+        const newPersonality = newConfig.personality || personality;
+        humanMimicry.setPersonality(newPersonality);
+
+        // Situation Detection
+        const newThresholds = newConfig.situationDetection || detectionThresholds;
+        situationDetector.updateThresholds(newThresholds);
+
+        // Handoff
+        const newHandoff = newConfig.handoff || handoffConfig;
+        handoffSystem.updateConfig(newHandoff);
+
+        // Working Hours
+        if (workingHoursService && newConfig.workingHours) {
+          workingHoursService.updateConfig(newConfig.workingHours);
+        }
+
+        // Greeting Service
+        if (greetingService && newConfig.greetings) {
+          greetingService.updateConfig(newConfig.greetings);
+        }
+
+        // Response Delay
+        if (responseDelayService && newConfig.responseDelays) {
+          responseDelayService.updateConfig(newConfig.responseDelays);
+        }
+
+        // Contact Qualifier
+        if (contactQualifier && newConfig.contactQualification) {
+          contactQualifier.updateConfig(newConfig.contactQualification);
+        }
+
+        // Strange Question Handler
+        if (strangeQuestionHandler && newConfig.strangeQuestions) {
+          strangeQuestionHandler.updateConfig(newConfig.strangeQuestions);
+        }
+
+        // Follow-Up Service
+        if (followUpService && newConfig.followUp) {
+          followUpService.updateConfig(newConfig.followUp);
+        }
+
+        // Summary Service
+        if (summaryService && newConfig.summary) {
+          summaryService.updateConfig(newConfig.summary);
+        }
+
+        // Conversation Detector
+        if (conversationDetector && newConfig.conversation) {
+          conversationDetector.updateConfig(newConfig.conversation);
+        }
+
+        // Operator Request Handler
+        if (operatorRequestHandler && newConfig.operatorRequest) {
+          operatorRequestHandler.updateConfig(newConfig.operatorRequest);
+        }
+
+        // Knowledge Base reload
+        try {
+          await knowledgeBase.initialize();
+        } catch { /* ignore */ }
+
+        console.log('[Hot-reload] ✅ Конфигурация перезагружена');
+        res.json({ success: true });
+      } catch (err: any) {
+        console.error('[Hot-reload] ❌ Ошибка перезагрузки конфига:', err.message);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
     // Proxy ALL unhandled /api/* requests to admin-panel server (port 4000)
     // Main server routes (/api/admin/login, /api/admin/offices, etc.) are handled above by adminRouter.
     // Everything else (e.g. /api/config, /api/knowledge/*, /api/auth/*, /api/admin/media, /api/status/*) is proxied.

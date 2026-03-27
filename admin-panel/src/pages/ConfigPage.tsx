@@ -1,5 +1,6 @@
 import { useConfig } from '../hooks/useConfig';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../i18n/useTranslation';
 import SaveButton from '../components/ui/SaveButton';
 import ServerSection from '../components/config/ServerSection';
 import AISection from '../components/config/AISection';
@@ -14,16 +15,17 @@ import LoggingSection from '../components/config/LoggingSection';
 export default function ConfigPage() {
   const { config, loading, saving, error, saveConfig, updateField } = useConfig();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
-  if (loading) return <div className="text-gray-500">Loading configuration...</div>;
-  if (!config) return <div className="text-red-500">Failed to load configuration: {error}</div>;
+  if (loading) return <div className="text-gray-500">{t('common.loading')}</div>;
+  if (!config) return <div className="text-red-500">{`${t('config.loadFailed')}: ${error}`}</div>;
 
   const handleSave = async () => {
     const ok = await saveConfig(config);
     if (ok) {
-      toast('success', 'Configuration saved successfully. Restart the app to apply changes.');
+      toast('success', t('config.saved'));
     } else {
-      toast('error', 'Failed to save configuration. Check the server logs.');
+      toast('error', t('config.saveFailed'));
     }
   };
 
@@ -31,8 +33,8 @@ export default function ConfigPage() {
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Configuration</h2>
-          <p className="text-sm text-gray-500 mt-1">Changes require restarting the main application.</p>
+          <h2 className="text-2xl font-bold text-gray-900">{t('config.title')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('config.subtitle')}</p>
         </div>
         <SaveButton saving={saving} onClick={handleSave} />
       </div>

@@ -1212,6 +1212,10 @@ export class SituationDetector {
     return recs;
   }
 
+  updateThresholds(thresholds: DetectionThresholds): void {
+    this.thresholds = thresholds;
+  }
+
   private describeComplexityFactors(factors: ComplexityFactors): string {
     const descriptions: string[] = [];
     if (factors.outOfScope) descriptions.push('вне зоны компетенции');

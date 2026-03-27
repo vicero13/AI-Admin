@@ -1,4 +1,5 @@
 import { useRef, useState, DragEvent } from 'react';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface FileUploaderProps {
   onFileSelect: (file: File) => void;
@@ -8,6 +9,7 @@ interface FileUploaderProps {
 export default function FileUploader({ onFileSelect, accept = '.json,.csv,.txt,.xlsx,.xls' }: FileUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const { t } = useTranslation();
 
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();

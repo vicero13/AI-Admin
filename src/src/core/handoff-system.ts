@@ -567,6 +567,10 @@ export class HandoffSystem {
     return notes;
   }
 
+  updateConfig(config: HandoffConfig): void {
+    this.handoffConfig = config;
+  }
+
   private generateSuggestedResponses(
     context: ConversationContext,
     analysis: SituationAnalysis,

@@ -10,6 +10,12 @@ export interface Location {
 
 const locationsPath = path.join(PATHS.knowledgeBase, 'locations.json');
 
+const DEFAULT_LOCATIONS: Location[] = [
+  { id: 'sokol', name: 'Сокол', active: true },
+  { id: 'chistye-prudy', name: 'Чистые пруды', active: true },
+  { id: 'tsvetnoy', name: 'Цветной бульвар', active: true },
+];
+
 function ensureBackupDir() {
   if (!fs.existsSync(PATHS.backups)) {
     fs.mkdirSync(PATHS.backups, { recursive: true });
@@ -26,7 +32,18 @@ function createBackup() {
 }
 
 export function getLocations(): Location[] {
-  if (!fs.existsSync(locationsPath)) return [];
+  if (!fs.existsSync(locationsPath)) {
+    // Seed default locations if file missing
+    console.log('[Locations] locations.json not found, seeding defaults...');
+    try {
+      fs.writeFileSync(locationsPath, JSON.stringify(DEFAULT_LOCATIONS, null, 2) + '\n', 'utf-8');
+      console.log('[Locations] ✅ Seeded default locations');
+    } catch (e) {
+      console.error('[Locations] ❌ Failed to seed defaults:', e);
+      return DEFAULT_LOCATIONS;
+    }
+    return DEFAULT_LOCATIONS;
+  }
   const raw = fs.readFileSync(locationsPath, 'utf-8');
   return JSON.parse(raw);
 }

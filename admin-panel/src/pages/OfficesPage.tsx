@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface Location {
   id: string;
@@ -45,6 +46,7 @@ export default function OfficesPage() {
   const [newOffice, setNewOffice] = useState<Partial<Office> | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const fetchData = useCallback(async () => {
     setLoading(true);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDialogUpload } from '../hooks/useDialogUpload';
 import { useToast } from '../components/ui/Toast';
+import { useTranslation } from '../i18n/useTranslation';
 import FileUploader from '../components/dialogs/FileUploader';
 import DialogPreview from '../components/dialogs/DialogPreview';
 import type { DialogExample } from '../types';
@@ -8,6 +9,7 @@ import type { DialogExample } from '../types';
 export default function DialogUploadPage() {
   const { preview, uploading, importing, error, upload, importDialogs, reset } = useDialogUpload();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [dialogs, setDialogs] = useState<DialogExample[]>([]);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -16,9 +18,9 @@ export default function DialogUploadPage() {
     const result = await upload(file);
     if (result) {
       setDialogs(result);
-      toast('info', `Parsed ${result.length} dialog(s). Review and import.`);
+      toast('info', `${t('dialogs.parsed')} ${result.length}`);
     } else {
-      toast('error', 'Failed to parse the file. Check the format.');
+      toast('error', t('dialogs.parseFailed'));
     }
   };
 
@@ -30,19 +32,19 @@ export default function DialogUploadPage() {
     if (dialogs.length === 0) return;
     const result = await importDialogs(dialogs);
     if (result) {
-      setImportResult(`Imported ${result.added} dialog(s). Total: ${result.total}.`);
+      setImportResult(`${t('dialogs.imported')} ${result.added}. Total: ${result.total}.`);
       setDialogs([]);
-      toast('success', `Imported ${result.added} dialog(s) successfully.`);
+      toast('success', `${t('dialogs.imported')} ${result.added}`);
     } else {
-      toast('error', 'Failed to import dialogs.');
+      toast('error', t('dialogs.importFailed'));
     }
   };
 
   return (
     <div className="max-w-4xl">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Dialog Upload</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('dialogs.title')}</h2>
       <p className="text-sm text-gray-500 mb-4">
-        Upload dialog examples in JSON, CSV, TXT, or XLSX format. They will be parsed and added to the dialog examples database.
+        {t('dialogs.description')}
       </p>
 
       {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
@@ -52,7 +54,7 @@ export default function DialogUploadPage() {
         <FileUploader onFileSelect={handleFileSelect} />
       )}
 
-      {uploading && <div className="text-gray-500 py-8 text-center">Parsing file...</div>}
+      {uploading && <div className="text-gray-500 py-8 text-center">{t('dialogs.parsing')}</div>}
 
       {dialogs.length > 0 && (
         <>
@@ -63,13 +65,13 @@ export default function DialogUploadPage() {
               disabled={importing || dialogs.length === 0}
               className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {importing ? 'Importing...' : `Import ${dialogs.length} dialog(s)`}
+              {importing ? '...' : `${t('common.import')} ${dialogs.length}`}
             </button>
             <button
               onClick={() => { setDialogs([]); reset(); }}
               className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </>

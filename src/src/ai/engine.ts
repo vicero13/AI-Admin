@@ -991,6 +991,10 @@ export class AIEngine {
     return parts.join('\n');
   }
 
+  updateConfig(config: AIEngineConfig): void {
+    this.config = config;
+  }
+
   // --- Private helpers ---
 
   private ensureInitialized(): void {

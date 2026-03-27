@@ -139,6 +139,10 @@ export class ResponseDelayService {
     return this.config.enabled;
   }
 
+  updateConfig(config: ResponseDelayConfig): void {
+    this.config = config;
+  }
+
   // --- Private helpers ---
 
   private randomBetween(min: number, max: number): number {

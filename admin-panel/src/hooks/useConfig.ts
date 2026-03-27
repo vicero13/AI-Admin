@@ -29,6 +29,10 @@ export function useConfig() {
       await api.put('/config', newConfig);
       setConfig(newConfig);
       setError(null);
+      // Hot-reload: сообщить main server о новом конфиге
+      try {
+        await api.post('/admin/reload-config');
+      } catch { /* main server может быть недоступен */ }
       return true;
     } catch (err: any) {
       setError(err.message);
