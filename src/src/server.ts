@@ -507,23 +507,25 @@ async function main() {
         const sendTask = (async () => {
           if (prevSend) await prevSend.catch(() => {});
 
-          // Использовать ResponseDelayService если доступен
-          if (responseDelayService?.isEnabled()) {
-            await responseDelayService.executeDelay(
-              message.conversationId,
-              businessConnectionId,
-              message.content.text || '',
-              result.responseText,
-              result.isGreeting,
-              result.firstMessageReceivedAt
-            );
-          } else {
-            await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
-            await sleep(Math.min(result.typingDelay, 4000));
-          }
-
           // Отправить основной ответ (последний рубеж: убираем [HANDOFF] если остался)
           const finalText = result.responseText.replace(/\[HANDOFF\]\s*/gi, '').trim();
+
+          // Пропускаем typing и delay если нет текста (тихий handoff)
+          if (finalText) {
+            if (responseDelayService?.isEnabled()) {
+              await responseDelayService.executeDelay(
+                message.conversationId,
+                businessConnectionId,
+                message.content.text || '',
+                result.responseText,
+                result.isGreeting,
+                result.firstMessageReceivedAt
+              );
+            } else {
+              await telegramAdapter.sendTypingIndicator(message.conversationId, businessConnectionId);
+              await sleep(Math.min(result.typingDelay, 4000));
+            }
+          }
           if (finalText) {
             await telegramAdapter.sendMessage(
               message.conversationId,

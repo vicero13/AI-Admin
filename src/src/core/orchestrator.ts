@@ -545,12 +545,12 @@ export class Orchestrator {
         // Auto-handoff for residents, suppliers, etc.
         const strategy = this.contactQualifier.getHandlingStrategy(contactType);
         if (strategy.handoffToManager) {
-          this.logger.info(`Contact type ${contactType} requires handoff for ${conversationId}`);
+          this.logger.info(`[Step 7] Contact type ${contactType} → silent handoff for ${conversationId}`);
 
-          // Generate a brief polite response before handoff
+          // Резидент/поставщик → тихий handoff на менеджера, без AI-ответа
           const handoffReason: HandoffReason = {
             type: HandoffReasonType.SPECIAL_REQUEST,
-            description: contactType, // Передаём тип контакта для метки в уведомлении
+            description: contactType,
             severity: RiskLevel.LOW,
             detectedBy: 'contact_qualifier',
           };
@@ -561,60 +561,8 @@ export class Orchestrator {
             requiresHandoff: true,
           });
 
-          // Use AI to generate a natural brief response acknowledging their request
-          // before handing off, with the additionalInstructions from strategy
-          // ВАЖНО: НИКОГДА не раскрывать тип контакта клиенту!
-          try {
-            const knowledgeResults = await this.knowledgeBase.search(text, 3);
-            const relevantItems = knowledgeResults.map((r) => r.item);
-            // Добавляем критическое ограничение в контекст перед генерацией
-            const handoffContext = { ...updatedContext };
-            if (!handoffContext.metadata) handoffContext.metadata = {};
-            handoffContext.metadata.additionalInstructions =
-              '⚠️ АБСОЛЮТНЫЙ ЗАПРЕТ: НИКОГДА не раскрывай клиенту его тип (брокер/агент/резидент/поставщик). ' +
-              'ЗАПРЕЩЕНО: "вы брокер", "понятно, вы агент", "раз вы брокер". ' +
-              'Просто вежливо ответь на вопрос клиента и предложи связаться с менеджером для уточнения деталей.';
-            const aiResponse = await this.aiEngine.generateHumanLikeResponse(
-              text,
-              handoffContext,
-              relevantItems,
-              this.config.personality
-            );
-
-            const responseText = await this.humanMimicry.makeNatural(aiResponse.text, {
-              allowTypo: false,
-              useColloquialisms: true,
-              varyStructure: true,
-              useContractions: false,
-            });
-
-            await this.contextManager.addMessage(conversationId, {
-              messageId: `ai-handoff-qualify-${Date.now()}`,
-              timestamp: Date.now(),
-              role: MessageRole.ASSISTANT,
-              content: responseText,
-              handledBy: MessageHandler.AI,
-            });
-
-            return {
-              responseText,
-              typingDelay: this.humanMimicry.calculateTypingDelay(responseText),
-            };
-          } catch {
-            // Fallback: simple handoff message
-            const fallbackMsg = 'Добрый день! Сейчас переключу на коллегу, который сможет помочь 🙏';
-            await this.contextManager.addMessage(conversationId, {
-              messageId: `ai-handoff-qualify-${Date.now()}`,
-              timestamp: Date.now(),
-              role: MessageRole.ASSISTANT,
-              content: fallbackMsg,
-              handledBy: MessageHandler.AI,
-            });
-            return {
-              responseText: fallbackMsg,
-              typingDelay: this.humanMimicry.calculateTypingDelay(fallbackMsg),
-            };
-          }
+          // Не отвечаем — менеджер ответит сам
+          return { responseText: '', typingDelay: 0 };
         }
       }
 
