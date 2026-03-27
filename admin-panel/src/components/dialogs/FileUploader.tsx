@@ -35,8 +35,8 @@ export default function FileUploader({ onFileSelect, accept = '.json,.csv,.txt,.
     >
       <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="hidden" />
       <div className="text-gray-500">
-        <p className="text-lg font-medium">Drag & drop file here or click to select</p>
-        <p className="text-sm mt-2">Supported formats: JSON, CSV, TXT, XLSX</p>
+        <p className="text-lg font-medium">{t('dialogs.dragDrop')}</p>
+        <p className="text-sm mt-2">{t('dialogs.formats')}</p>
       </div>
     </div>
   );

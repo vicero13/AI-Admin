@@ -74,13 +74,13 @@ export default function OfficesPage() {
         const res = await api.post('/admin/offices', office);
         setOffices([...offices, res.data]);
         setNewOffice(null);
-        toast('success', 'Офис добавлен');
+        toast('success', t('offices.added'));
       } else {
         const res = await api.put(`/admin/offices/${office.id}`, office);
         setOffices(offices.map(o => o.id === office.id ? res.data : o));
         setEditingId(null);
         setEditData({});
-        toast('success', 'Офис обновлён');
+        toast('success', t('offices.updated'));
       }
     } catch (err: any) {
       toast('error', err.message);
@@ -94,7 +94,7 @@ export default function OfficesPage() {
     try {
       const res = await api.patch(`/admin/offices/${id}/toggle-active`);
       setOffices(offices.map(o => o.id === id ? res.data : o));
-      toast('success', res.data.active ? 'Офис активирован' : 'Офис перемещён в архив');
+      toast('success', res.data.active ? t('offices.activated') : t('offices.deactivated'));
     } catch (err: any) {
       toast('error', err.message);
     } finally {
@@ -121,7 +121,7 @@ export default function OfficesPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    if (dateStr === 'available') return 'Свободен';
+    if (dateStr === 'available') return t('offices.statusFree');
     try {
       return new Date(dateStr).toLocaleDateString('ru-RU');
     } catch {
@@ -130,13 +130,13 @@ export default function OfficesPage() {
   };
 
   if (loading) {
-    return <div className="text-gray-500">Загрузка...</div>;
+    return <div className="text-gray-500">{t('common.loading')}</div>;
   }
 
   return (
     <div className="max-w-6xl">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Офисы</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t('offices.title')}</h2>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
             <input
@@ -145,7 +145,7 @@ export default function OfficesPage() {
               onChange={e => setShowArchived(e.target.checked)}
               className="rounded border-gray-300"
             />
-            Показать архив
+            {t('common.showArchive')}
           </label>
           <button
             onClick={() => setNewOffice(emptyOffice())}
@@ -155,7 +155,7 @@ export default function OfficesPage() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Добавить офис
+            {t('offices.add')}
           </button>
         </div>
       </div>
@@ -164,15 +164,15 @@ export default function OfficesPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Объект</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">№ офиса</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Мест</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">м²</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Цена/мес</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ссылка</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Свободен</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Активен</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.location')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.number')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.capacity')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.area')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.pricePerMonth')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('common.link')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('offices.availableFrom')}</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('common.active')}</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -220,7 +220,7 @@ export default function OfficesPage() {
             {offices.length === 0 && !newOffice && (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  Нет офисов. Нажмите "Добавить офис" чтобы создать первый.
+                  {t('offices.empty')}
                 </td>
               </tr>
             )}
@@ -361,7 +361,7 @@ function OfficeRow({
       <td className="px-4 py-3 text-sm">
         {office.link ? (
           <a href={office.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-            Ссылка
+            🔗
           </a>
         ) : '—'}
       </td>
@@ -374,7 +374,7 @@ function OfficeRow({
         <button
           onClick={onToggleActive}
           disabled={saving}
-          title={isActive ? 'В архив' : 'Активировать'}
+          title={isActive ? '→ archive' : '→ activate'}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
             isActive ? 'bg-green-500' : 'bg-gray-300'
           }`}
